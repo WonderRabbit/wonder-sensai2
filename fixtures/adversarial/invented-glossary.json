@@ -1,0 +1,12 @@
+{
+  "terms": [
+    {
+      "term_id": "GLOSS-999",
+      "term_ko": "가상 주문",
+      "term_canonical": "ImaginaryOrder",
+      "evidence_ids": [],
+      "maps_to": ["BIZ-ENT-999"],
+      "status": "exact"
+    }
+  ]
+}

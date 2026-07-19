@@ -1,0 +1,828 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wonder-sensai.local/schemas/trace.schema.json",
+  "title": "wonder-sensai 추적 원장 2.0",
+  "description": "하나의 미션에서 AS-IS 사실과 TO-BE 설계를 근거 및 결합 관계와 함께 보존하는 정규 원장이다.",
+  "$comment": "참조 무결성, 전역 식별자 중복, 경로와 줄 번호의 일치는 저장소의 jq 동등성 검증기가 추가로 검사한다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mission_id",
+    "evidence",
+    "conventions",
+    "requirements",
+    "frontends",
+    "backends",
+    "business_entities",
+    "business_rules",
+    "business_flows",
+    "business_events",
+    "business_states",
+    "business_invariants",
+    "extension_requirements",
+    "designs",
+    "bindings",
+    "unknowns",
+    "unsupported",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "description": "원장 형식의 고정 버전이다."
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "소문자와 하이픈으로 정규화한 미션 식별자다."
+    },
+    "glossary_ref": {
+      "$ref": "#/$defs/glossary_ref"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "conventions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/convention"
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/requirement"
+      }
+    },
+    "frontends": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frontend"
+      }
+    },
+    "backends": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/backend"
+      }
+    },
+    "joins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/join"
+      }
+    },
+    "business_entities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/business_entity"
+      }
+    },
+    "business_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/business_rule"
+      }
+    },
+    "business_flows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/business_flow"
+      }
+    },
+    "business_events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/business_event"
+      }
+    },
+    "business_states": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/business_state"
+      }
+    },
+    "business_invariants": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/business_invariant"
+      }
+    },
+    "extension_requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/extension_requirement"
+      }
+    },
+    "designs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/design"
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/binding"
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unknown"
+      }
+    },
+    "unsupported": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unsupported"
+      }
+    },
+    "provenance": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/provenance"
+      }
+    }
+  },
+  "$defs": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["asis", "tobe"]
+    },
+    "asis_kind": {
+      "const": "asis"
+    },
+    "tobe_kind": {
+      "const": "tobe"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["exact", "unresolved", "ambiguous", "many_to_many", "conflict"]
+    },
+    "uncertain_status": {
+      "type": "string",
+      "enum": ["unresolved", "ambiguous", "many_to_many", "conflict"]
+    },
+    "safe_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "evidence_id": {
+      "type": "string",
+      "pattern": "^E-[A-Z0-9]+(?:-[A-Z0-9]+)*(?:-[0-9]{3})?$"
+    },
+    "evidence_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/evidence_id"
+      }
+    },
+    "string_list": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/non_empty_string"
+      }
+    },
+    "glossary_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/safe_path"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "path", "line", "path_line"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/evidence_id"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "path": {
+          "$ref": "#/$defs/safe_path"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "path_line": {
+          "type": "string",
+          "minLength": 3,
+          "pattern": "^.+:[1-9][0-9]*$"
+        }
+      }
+    },
+    "convention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "category",
+        "statement_ko",
+        "examples",
+        "evidence_ids",
+        "status",
+        "extractor"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^CONV-(?:COMPONENT|STRUCTURE|NAMING|API|STATE|ERROR|TEST)-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "COMPONENT",
+            "STRUCTURE",
+            "NAMING",
+            "API",
+            "STATE",
+            "ERROR",
+            "TEST"
+          ]
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "examples": {
+          "$ref": "#/$defs/string_list"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "extractor": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "statement_ko",
+        "keyword",
+        "evidence_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "$comment": "기존 세 자리 ID를 보존하면서 신규 네 자리 ID도 허용한다.",
+          "pattern": "^REQ-[0-9]{3,4}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "statement": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "keyword": {
+          "type": "string",
+          "enum": ["MUST", "SHOULD", "MAY"]
+        },
+        "evidence": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "route", "evidence_ids", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^FE-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "route": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "method", "route", "evidence_ids", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^BE-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+        },
+        "route": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "join": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "frontend_id",
+        "backend_id",
+        "evidence_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^J-[A-Z0-9]+-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "frontend_id": {
+          "type": "string",
+          "pattern": "^FE-[0-9]{3}$"
+        },
+        "backend_id": {
+          "type": "string",
+          "pattern": "^BE-[0-9]{3}$"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "business_entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "category",
+        "statement_ko",
+        "identifiers",
+        "evidence_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^BIZ-ENT-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "category": {
+          "const": "business_entity"
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "identifiers": {
+          "$ref": "#/$defs/string_list"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "business_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "category",
+        "statement_ko",
+        "evidence_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^BIZ-RULE-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "category": {
+          "const": "business_rule"
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "business_flow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "category",
+        "statement_ko",
+        "evidence_ids",
+        "technical_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^BIZ-FLOW-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "category": {
+          "const": "business_flow"
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "technical_ids": {
+          "$ref": "#/$defs/string_list"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "business_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "category",
+        "statement_ko",
+        "evidence_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "$comment": "신규 EVT 표기와 기존 EVENT 표기를 함께 허용한다.",
+          "pattern": "^BIZ-(?:EVT|EVENT)-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "category": {
+          "const": "business_event"
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "business_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "category",
+        "statement_ko",
+        "evidence_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^BIZ-STATE-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "category": {
+          "const": "business_state"
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "business_invariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "category",
+        "statement_ko",
+        "evidence_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "$comment": "신규 INV 표기와 기존 INVARIANT 표기를 함께 허용한다.",
+          "pattern": "^BIZ-(?:INV|INVARIANT)-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "category": {
+          "const": "business_invariant"
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "extension_requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "source",
+        "keyword",
+        "statement_ko",
+        "evidence_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^REQ-EXT-[0-9]{4}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/tobe_kind"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["user", "elicited", "inferred"]
+        },
+        "keyword": {
+          "type": "string",
+          "enum": ["MUST", "SHOULD", "MAY"]
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "type",
+        "statement_ko",
+        "requirement_ids",
+        "follows_convention_ids",
+        "follows_business_ids",
+        "evidence_ids",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^DESIGN-(?:PAGE|SERVICE|API|ENTITY)-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/tobe_kind"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["page", "service", "api", "entity"]
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "requirement_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^REQ-EXT-[0-9]{4}$"
+          }
+        },
+        "follows_convention_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^CONV-(?:COMPONENT|STRUCTURE|NAMING|API|STATE|ERROR|TEST)-[0-9]{3}$"
+          }
+        },
+        "follows_business_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^BIZ-(?:ENT|RULE|FLOW|EVT|EVENT|STATE|INV|INVARIANT)-[0-9]{3}$"
+          }
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "design_id", "gate"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^BIND-[0-9]{3}$"
+        },
+        "design_id": {
+          "type": "string",
+          "pattern": "^DESIGN-(?:PAGE|SERVICE|API|ENTITY)-[0-9]{3}$"
+        },
+        "convention_id": {
+          "type": "string",
+          "pattern": "^CONV-(?:COMPONENT|STRUCTURE|NAMING|API|STATE|ERROR|TEST)-[0-9]{3}$"
+        },
+        "business_id": {
+          "type": "string",
+          "pattern": "^BIZ-(?:ENT|RULE|FLOW|EVT|EVENT|STATE|INV|INVARIANT)-[0-9]{3}$"
+        },
+        "gate": {
+          "type": "string",
+          "enum": ["pass", "violation"]
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["convention_id"]
+        },
+        {
+          "required": ["business_id"]
+        }
+      ]
+    },
+    "unknown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement_ko", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^UNKNOWN-[0-9]{3}$"
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "status": {
+          "$ref": "#/$defs/uncertain_status"
+        }
+      }
+    },
+    "unsupported": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "statement_ko", "evidence_ids", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^UNSUPPORTED-[0-9]{3}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/asis_kind"
+        },
+        "statement_ko": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_ids": {
+          "$ref": "#/$defs/evidence_ids"
+        },
+        "status": {
+          "$ref": "#/$defs/uncertain_status"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line", "path_line"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/safe_path"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "path_line": {
+          "type": "string",
+          "minLength": 3,
+          "pattern": "^.+:[1-9][0-9]*$"
+        }
+      }
+    }
+  }
+}

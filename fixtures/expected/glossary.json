@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "terms": [
+    {
+      "term_id": "GLOSS-001",
+      "term_ko": "주문",
+      "term_canonical": "Order",
+      "identifier_form": {"variable": "order", "function": "getOrder", "class": "Order"},
+      "definition_ko": "고객이 생성하고 상태가 전이되는 도메인 엔티티.",
+      "category": "entity",
+      "evidence_ids": ["E-STATE-INITIAL"],
+      "maps_to": ["BIZ-ENT-001"],
+      "status": "exact"
+    }
+  ],
+  "provenance": [
+    {"path": "inputs/business/order-state.json", "line": 2, "path_line": "inputs/business/order-state.json:2"}
+  ]
+}

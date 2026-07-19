@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "statement": "List orders",
+      "evidence": "inputs/spec/requirements.md:3"
+    }
+  ],
+  "frontends": [
+    {
+      "id": "FE-001",
+      "route": "/orders",
+      "evidence": "inputs/legacy-react/src/OrdersPage.tsx:3"
+    }
+  ],
+  "backends": [
+    {
+      "id": "BE-001",
+      "method": "GET",
+      "route": "/orders",
+      "evidence": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:10"
+    }
+  ],
+  "provenance": [
+    {"path": "inputs/spec/requirements.md", "line": 3, "path_line": "inputs/spec/requirements.md:3"}
+  ]
+}

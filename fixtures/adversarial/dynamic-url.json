@@ -1,0 +1,6 @@
+{
+  "id": "ADV-DYNAMIC-URL",
+  "url_expression": "window.location.origin + tenantPath",
+  "status": "ambiguous",
+  "invalid_if_promoted_to_exact": true
+}

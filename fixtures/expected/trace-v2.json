@@ -1,0 +1,98 @@
+{
+  "schema_version": "2.0",
+  "mission_id": "fixture-mission",
+  "evidence": [
+    {"id": "E-BIZ-CONFLICT", "kind": "asis", "path": "inputs/business/order-rules.md", "line": 4, "path_line": "inputs/business/order-rules.md:4"},
+    {"id": "E-BIZ-EVENT", "kind": "asis", "path": "inputs/business/order-rules.md", "line": 5, "path_line": "inputs/business/order-rules.md:5"},
+    {"id": "E-BIZ-INVARIANT", "kind": "asis", "path": "inputs/business/order-rules.md", "line": 6, "path_line": "inputs/business/order-rules.md:6"},
+    {"id": "E-BIZ-RULE", "kind": "asis", "path": "inputs/business/order-rules.md", "line": 3, "path_line": "inputs/business/order-rules.md:3"},
+    {"id": "E-CHANGE-DETAIL", "kind": "tobe", "path": "inputs/change/valid.md", "line": 3, "path_line": "inputs/change/valid.md:3"},
+    {"id": "E-OPENAPI-GET", "kind": "asis", "path": "inputs/spec/openapi.yaml", "line": 6, "path_line": "inputs/spec/openapi.yaml:6"},
+    {"id": "E-OPENAPI-POST", "kind": "asis", "path": "inputs/spec/openapi.yaml", "line": 12, "path_line": "inputs/spec/openapi.yaml:12"},
+    {"id": "E-REACT-COMPONENT", "kind": "asis", "path": "inputs/legacy-react/src/OrdersPage.tsx", "line": 1, "path_line": "inputs/legacy-react/src/OrdersPage.tsx:1"},
+    {"id": "E-REACT-PAGE", "kind": "asis", "path": "inputs/legacy-react/src/OrdersPage.tsx", "line": 5, "path_line": "inputs/legacy-react/src/OrdersPage.tsx:5"},
+    {"id": "E-REACT-ROUTE", "kind": "asis", "path": "inputs/legacy-react/src/OrdersPage.tsx", "line": 3, "path_line": "inputs/legacy-react/src/OrdersPage.tsx:3"},
+    {"id": "E-RFC-REQ", "kind": "asis", "path": "inputs/spec/requirements.md", "line": 3, "path_line": "inputs/spec/requirements.md:3"},
+    {"id": "E-STATE-INITIAL", "kind": "asis", "path": "inputs/business/order-state.json", "line": 3, "path_line": "inputs/business/order-state.json:3"},
+    {"id": "E-STATE-TRANSITION", "kind": "asis", "path": "inputs/business/order-state.json", "line": 5, "path_line": "inputs/business/order-state.json:5"},
+    {"id": "E-VERTX-COMPONENT", "kind": "asis", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 3, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:3"},
+    {"id": "E-VERTX-GET", "kind": "asis", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 10, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:10"},
+    {"id": "E-VERTX-POST", "kind": "asis", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 15, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:15"},
+    {"id": "E-VERTX-EVENT", "kind": "asis", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 16, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:16"},
+    {"id": "E-VERTX-STATUS", "kind": "asis", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 17, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:17"},
+    {"id": "E-VERTX-STRUCTURE", "kind": "asis", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 6, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:6"}
+  ],
+  "conventions": [
+    {"id": "CONV-NAMING-001", "kind": "asis", "category": "NAMING", "statement_ko": "경로는 소문자 복수 명사를 사용한다.", "examples": ["/orders"], "evidence_ids": ["E-REACT-ROUTE", "E-VERTX-GET"], "status": "exact", "extractor": "fixture"},
+    {"id": "CONV-STRUCTURE-001", "kind": "asis", "category": "STRUCTURE", "statement_ko": "화면과 서버 라우트는 분리한다.", "examples": ["OrdersPage", "OrderVerticle"], "evidence_ids": ["E-REACT-PAGE", "E-VERTX-STRUCTURE"], "status": "exact", "extractor": "fixture"},
+    {"id": "CONV-COMPONENT-001", "kind": "asis", "category": "COMPONENT", "statement_ko": "React와 Vert.x를 사용한다.", "examples": ["React", "Vert.x"], "evidence_ids": ["E-REACT-COMPONENT", "E-VERTX-COMPONENT"], "status": "exact", "extractor": "fixture"},
+    {"id": "CONV-API-001", "kind": "asis", "category": "API", "statement_ko": "주문 목록은 GET /orders를 사용한다.", "examples": ["GET /orders"], "evidence_ids": ["E-OPENAPI-GET", "E-VERTX-GET"], "status": "exact", "extractor": "fixture"},
+    {"id": "CONV-STATE-001", "kind": "asis", "category": "STATE", "statement_ko": "주문은 pending에서 paid로 전이한다.", "examples": ["pending -> paid"], "evidence_ids": ["E-STATE-TRANSITION"], "status": "exact", "extractor": "fixture"},
+    {"id": "CONV-ERROR-001", "kind": "asis", "category": "ERROR", "statement_ko": "수락된 생성 요청은 202를 반환한다.", "examples": ["202"], "evidence_ids": ["E-VERTX-STATUS"], "status": "exact", "extractor": "fixture"},
+    {"id": "CONV-TEST-001", "kind": "asis", "category": "TEST", "statement_ko": "RFC MUST 문장을 인수 조건으로 보존한다.", "examples": ["REQ-001"], "evidence_ids": ["E-RFC-REQ"], "status": "exact", "extractor": "fixture"}
+  ],
+  "requirements": [
+    {"id": "REQ-001", "statement": "List orders", "evidence": "inputs/spec/requirements.md:3", "kind": "asis", "statement_ko": "주문 목록을 조회한다.", "keyword": "MUST", "evidence_ids": ["E-RFC-REQ"], "status": "exact"}
+  ],
+  "frontends": [
+    {"id": "FE-001", "route": "/orders", "evidence": "inputs/legacy-react/src/OrdersPage.tsx:3", "kind": "asis", "evidence_ids": ["E-REACT-ROUTE"], "status": "exact"}
+  ],
+  "backends": [
+    {"id": "BE-001", "method": "GET", "route": "/orders", "evidence": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:10", "kind": "asis", "evidence_ids": ["E-VERTX-GET"], "status": "exact"},
+    {"id": "BE-002", "method": "POST", "route": "/orders", "evidence": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:15", "kind": "asis", "evidence_ids": ["E-OPENAPI-POST", "E-VERTX-POST"], "status": "exact"}
+  ],
+  "business_entities": [
+    {"id": "BIZ-ENT-001", "kind": "asis", "category": "business_entity", "statement_ko": "Order는 상태를 가진다.", "identifiers": ["order_id"], "evidence_ids": ["E-STATE-INITIAL"], "status": "exact"}
+  ],
+  "business_rules": [
+    {"id": "BIZ-RULE-001", "kind": "asis", "category": "business_rule", "statement_ko": "재고는 0 이상이어야 한다.", "evidence_ids": ["E-BIZ-CONFLICT", "E-BIZ-RULE"], "status": "conflict"},
+    {"id": "BIZ-RULE-002", "kind": "asis", "category": "business_rule", "statement_ko": "레거시 메모는 백오더 시 음수 재고를 허용한다.", "evidence_ids": ["E-BIZ-CONFLICT"], "status": "conflict"}
+  ],
+  "business_flows": [
+    {"id": "BIZ-FLOW-001", "kind": "asis", "category": "business_flow", "statement_ko": "주문 생성 후 이벤트를 발행한다.", "evidence_ids": ["E-BIZ-EVENT", "E-VERTX-EVENT"], "technical_ids": ["CONV-API-001"], "status": "exact"}
+  ],
+  "business_events": [
+    {"id": "BIZ-EVENT-001", "kind": "asis", "category": "business_event", "statement_ko": "order.created 이벤트를 발행한다.", "evidence_ids": ["E-BIZ-EVENT", "E-VERTX-EVENT"], "status": "exact"}
+  ],
+  "business_states": [
+    {"id": "BIZ-STATE-001", "kind": "asis", "category": "business_state", "statement_ko": "pending에서 paid로 전이한다.", "evidence_ids": ["E-STATE-TRANSITION"], "status": "exact"}
+  ],
+  "business_invariants": [
+    {"id": "BIZ-INVARIANT-001", "kind": "asis", "category": "business_invariant", "statement_ko": "paid 주문은 pending으로 돌아가지 않는다.", "evidence_ids": ["E-BIZ-INVARIANT"], "status": "exact"}
+  ],
+  "extension_requirements": [
+    {"id": "REQ-EXT-0001", "kind": "tobe", "source": "user", "keyword": "MUST", "statement_ko": "주문 상세 페이지를 추가한다.", "evidence_ids": ["E-CHANGE-DETAIL"], "status": "exact"}
+  ],
+  "designs": [
+    {"id": "DESIGN-PAGE-001", "kind": "tobe", "type": "page", "statement_ko": "주문 상세 페이지를 /orders/:id에 추가한다.", "requirement_ids": ["REQ-EXT-0001"], "follows_convention_ids": ["CONV-NAMING-001", "CONV-API-001"], "follows_business_ids": ["BIZ-INVARIANT-001"], "evidence_ids": ["E-CHANGE-DETAIL"], "status": "exact"}
+  ],
+  "bindings": [
+    {"id": "BIND-001", "design_id": "DESIGN-PAGE-001", "convention_id": "CONV-API-001", "gate": "pass"},
+    {"id": "BIND-002", "design_id": "DESIGN-PAGE-001", "business_id": "BIZ-INVARIANT-001", "gate": "pass"}
+  ],
+  "unknowns": [
+    {"id": "UNKNOWN-001", "statement_ko": "동적 tenant URL은 정적 분석만으로 확정하지 않는다.", "status": "unresolved"}
+  ],
+  "unsupported": [],
+  "provenance": [
+    {"path": "inputs/business/order-rules.md", "line": 3, "path_line": "inputs/business/order-rules.md:3"},
+    {"path": "inputs/business/order-rules.md", "line": 4, "path_line": "inputs/business/order-rules.md:4"},
+    {"path": "inputs/business/order-rules.md", "line": 5, "path_line": "inputs/business/order-rules.md:5"},
+    {"path": "inputs/business/order-rules.md", "line": 6, "path_line": "inputs/business/order-rules.md:6"},
+    {"path": "inputs/change/valid.md", "line": 3, "path_line": "inputs/change/valid.md:3"},
+    {"path": "inputs/legacy-react/src/OrdersPage.tsx", "line": 1, "path_line": "inputs/legacy-react/src/OrdersPage.tsx:1"},
+    {"path": "inputs/legacy-react/src/OrdersPage.tsx", "line": 3, "path_line": "inputs/legacy-react/src/OrdersPage.tsx:3"},
+    {"path": "inputs/legacy-react/src/OrdersPage.tsx", "line": 5, "path_line": "inputs/legacy-react/src/OrdersPage.tsx:5"},
+    {"path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 3, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:3"},
+    {"path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 6, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:6"},
+    {"path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 10, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:10"},
+    {"path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 15, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:15"},
+    {"path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 16, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:16"},
+    {"path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 17, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:17"},
+    {"path": "inputs/spec/openapi.yaml", "line": 6, "path_line": "inputs/spec/openapi.yaml:6"},
+    {"path": "inputs/spec/openapi.yaml", "line": 12, "path_line": "inputs/spec/openapi.yaml:12"},
+    {"path": "inputs/spec/requirements.md", "line": 3, "path_line": "inputs/spec/requirements.md:3"},
+    {"path": "inputs/business/order-state.json", "line": 3, "path_line": "inputs/business/order-state.json:3"},
+    {"path": "inputs/business/order-state.json", "line": 5, "path_line": "inputs/business/order-state.json:5"}
+  ]
+}

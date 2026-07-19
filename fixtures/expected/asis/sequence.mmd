@@ -1,0 +1,7 @@
+%% kind: asis
+%% provenance: inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:10
+sequenceDiagram
+  participant UI as OrdersPage
+  participant API as OrderVerticle
+  UI->>API: [BIZ-FLOW-001][REQ-001] GET /orders
+  API-->>UI: [BIZ-FLOW-001][REQ-001] 200 order list

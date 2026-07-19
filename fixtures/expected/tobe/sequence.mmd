@@ -1,0 +1,7 @@
+%% kind: tobe
+%% provenance: inputs/change/valid.md:3
+sequenceDiagram
+  participant UI as OrderDetailPage
+  participant API as OrderVerticle
+  UI->>API: [DESIGN-PAGE-001][REQ-EXT-0001] GET /orders/:id
+  API-->>UI: [DESIGN-PAGE-001][REQ-EXT-0001] 200 order detail

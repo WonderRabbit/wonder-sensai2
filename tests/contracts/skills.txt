@@ -1,0 +1,15 @@
+skills/sensai-business-trace/SKILL.md
+skills/sensai-change-design/SKILL.md
+skills/sensai-checklist/SKILL.md
+skills/sensai-convention-extract/SKILL.md
+skills/sensai-dataflow-chart/SKILL.md
+skills/sensai-evidence-first/SKILL.md
+skills/sensai-mermaid-sequence/SKILL.md
+skills/sensai-react-trace/SKILL.md
+skills/sensai-requirement-analyze/SKILL.md
+skills/sensai-spec-evidence/SKILL.md
+skills/sensai-stack-discovery/SKILL.md
+skills/sensai-test-scenario/SKILL.md
+skills/sensai-ui-definition/SKILL.md
+skills/sensai-user-story/SKILL.md
+skills/sensai-vertx-trace/SKILL.md

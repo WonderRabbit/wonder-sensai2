@@ -1,0 +1,29 @@
+# OS / editor
+.DS_Store
+.idea/
+*.swp
+
+# Local state / runtime
+.agents/
+.codex/
+.omo/
+
+# 설계/계획 문서 (혼자 작업, 협업 없음)
+plan/
+
+# 실패/회고/개인 산물 — 사용자 지시: 실패 내용 불필요
+postmortem/
+report/
+one.md
+archive/
+STATUS.md
+!/output/commands/sensai/status.md
+
+# 오케스트레이션 도구 (Claude Code/MoAI/OMC — 개발 인프라, 제품 아님)
+.claude/
+.moai/
+.omc/
+.git_hooks/
+.github/
+CLAUDE.md
+.claudeignore

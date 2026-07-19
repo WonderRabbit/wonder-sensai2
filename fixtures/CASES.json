@@ -1,0 +1,185 @@
+{
+  "schema_version": "1.0",
+  "declared_malformed_json": [
+    "adversarial/malformed.json"
+  ],
+  "fake_secret": {
+    "path": "inputs/secrets/fake-secret.txt",
+    "classification": "synthetic-only",
+    "policy": "must-not-appear-in-emitted-artifacts-or-evidence"
+  },
+  "evidence_expectations": [
+    {"id": "E-BIZ-CONFLICT", "path": "inputs/business/order-rules.md", "line": 4, "required_token": "BIZ-RULE-002", "fact_ids": ["BIZ-RULE-001", "BIZ-RULE-002"]},
+    {"id": "E-BIZ-EVENT", "path": "inputs/business/order-rules.md", "line": 5, "required_token": "BIZ-EVENT-001", "fact_ids": ["BIZ-EVENT-001", "BIZ-FLOW-001"]},
+    {"id": "E-BIZ-INVARIANT", "path": "inputs/business/order-rules.md", "line": 6, "required_token": "BIZ-INVARIANT-001", "fact_ids": ["BIZ-INVARIANT-001"]},
+    {"id": "E-BIZ-RULE", "path": "inputs/business/order-rules.md", "line": 3, "required_token": "BIZ-RULE-001", "fact_ids": ["BIZ-RULE-001"]},
+    {"id": "E-CHANGE-DETAIL", "path": "inputs/change/valid.md", "line": 3, "required_token": "REQ-EXT-0001", "fact_ids": ["DESIGN-PAGE-001", "REQ-EXT-0001"]},
+    {"id": "E-OPENAPI-GET", "path": "inputs/spec/openapi.yaml", "line": 6, "required_token": "/orders:", "fact_ids": ["CONV-API-001"]},
+    {"id": "E-OPENAPI-POST", "path": "inputs/spec/openapi.yaml", "line": 12, "required_token": "post:", "fact_ids": ["BE-002"]},
+    {"id": "E-REACT-COMPONENT", "path": "inputs/legacy-react/src/OrdersPage.tsx", "line": 1, "required_token": "React", "fact_ids": ["CONV-COMPONENT-001"]},
+    {"id": "E-REACT-PAGE", "path": "inputs/legacy-react/src/OrdersPage.tsx", "line": 5, "required_token": "OrdersPage", "fact_ids": ["CONV-STRUCTURE-001"]},
+    {"id": "E-REACT-ROUTE", "path": "inputs/legacy-react/src/OrdersPage.tsx", "line": 3, "required_token": "ORDER_ROUTE", "fact_ids": ["CONV-NAMING-001", "FE-001"]},
+    {"id": "E-RFC-REQ", "path": "inputs/spec/requirements.md", "line": 3, "required_token": "REQ-001", "fact_ids": ["CONV-TEST-001", "REQ-001"]},
+    {"id": "E-STATE-INITIAL", "path": "inputs/business/order-state.json", "line": 3, "required_token": "initial", "fact_ids": ["BIZ-ENT-001"]},
+    {"id": "E-STATE-TRANSITION", "path": "inputs/business/order-state.json", "line": 5, "required_token": "payment_captured", "fact_ids": ["BIZ-STATE-001", "CONV-STATE-001"]},
+    {"id": "E-VERTX-COMPONENT", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 3, "required_token": "AbstractVerticle", "fact_ids": ["CONV-COMPONENT-001"]},
+    {"id": "E-VERTX-GET", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 10, "required_token": "router.get(\"/orders\")", "fact_ids": ["BE-001", "CONV-API-001", "CONV-NAMING-001"]},
+    {"id": "E-VERTX-POST", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 15, "required_token": "router.post(\"/orders\")", "fact_ids": ["BE-002"]},
+    {"id": "E-VERTX-EVENT", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 16, "required_token": "order.created", "fact_ids": ["BIZ-EVENT-001", "BIZ-FLOW-001"]},
+    {"id": "E-VERTX-STATUS", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 17, "required_token": "setStatusCode(202)", "fact_ids": ["CONV-ERROR-001"]},
+    {"id": "E-VERTX-STRUCTURE", "path": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 6, "required_token": "OrderVerticle", "fact_ids": ["CONV-STRUCTURE-001"]}
+  ],
+  "cases": [
+    {
+      "id": "happy-react-source",
+      "mode": "happy",
+      "inputs": ["inputs/legacy-react/src/OrdersPage.tsx"],
+      "expected_artifacts": ["expected/trace-v2.json"],
+      "provenance": [{"artifact": "expected/trace-v2.json", "source": "inputs/legacy-react/src/OrdersPage.tsx", "line": 3, "path_line": "inputs/legacy-react/src/OrdersPage.tsx:3"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-vertx-source",
+      "mode": "happy",
+      "inputs": ["inputs/legacy-vertx/src/main/java/example/OrderVerticle.java"],
+      "expected_artifacts": ["expected/trace-v2.json"],
+      "provenance": [{"artifact": "expected/trace-v2.json", "source": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 10, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:10"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-openapi-get",
+      "mode": "happy",
+      "inputs": ["inputs/spec/openapi.yaml"],
+      "expected_artifacts": ["expected/trace-v2.json"],
+      "provenance": [{"artifact": "expected/trace-v2.json", "source": "inputs/spec/openapi.yaml", "line": 6, "path_line": "inputs/spec/openapi.yaml:6"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-openapi-post",
+      "mode": "happy",
+      "inputs": ["inputs/spec/openapi.yaml"],
+      "expected_artifacts": ["expected/trace-v2.json"],
+      "provenance": [{"artifact": "expected/trace-v2.json", "source": "inputs/spec/openapi.yaml", "line": 12, "path_line": "inputs/spec/openapi.yaml:12"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-rfc-requirement",
+      "mode": "happy",
+      "inputs": ["inputs/spec/requirements.md"],
+      "expected_artifacts": ["expected/trace-v2.json"],
+      "provenance": [{"artifact": "expected/trace-v2.json", "source": "inputs/spec/requirements.md", "line": 3, "path_line": "inputs/spec/requirements.md:3"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-business-rules",
+      "mode": "happy",
+      "inputs": ["inputs/business/order-rules.md"],
+      "expected_artifacts": ["expected/trace-v2.json"],
+      "provenance": [{"artifact": "expected/trace-v2.json", "source": "inputs/business/order-rules.md", "line": 3, "path_line": "inputs/business/order-rules.md:3"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-business-state-event",
+      "mode": "happy",
+      "inputs": ["inputs/business/order-state.json", "inputs/business/order-rules.md"],
+      "expected_artifacts": ["expected/trace-v2.json"],
+      "provenance": [{"artifact": "expected/trace-v2.json", "source": "inputs/business/order-state.json", "line": 3, "path_line": "inputs/business/order-state.json:3"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-change-request-valid",
+      "mode": "happy",
+      "inputs": ["inputs/change/valid.md"],
+      "expected_artifacts": ["expected/trace-v2.json"],
+      "provenance": [{"artifact": "expected/trace-v2.json", "source": "inputs/change/valid.md", "line": 3, "path_line": "inputs/change/valid.md:3"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-trace-v1",
+      "mode": "happy",
+      "inputs": ["inputs/spec/requirements.md"],
+      "expected_artifacts": ["expected/trace-v1.json"],
+      "provenance": [{"artifact": "expected/trace-v1.json", "source": "inputs/spec/requirements.md", "line": 3, "path_line": "inputs/spec/requirements.md:3"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-trace-v2",
+      "mode": "happy",
+      "inputs": ["inputs/spec/requirements.md"],
+      "expected_artifacts": ["expected/trace-v2.json"],
+      "provenance": [{"artifact": "expected/trace-v2.json", "source": "inputs/spec/requirements.md", "line": 3, "path_line": "inputs/spec/requirements.md:3"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-progress",
+      "mode": "happy",
+      "inputs": ["inputs/spec/requirements.md"],
+      "expected_artifacts": ["expected/progress.json"],
+      "provenance": [{"artifact": "expected/progress.json", "source": "inputs/spec/requirements.md", "line": 3, "path_line": "inputs/spec/requirements.md:3"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-glossary",
+      "mode": "happy",
+      "inputs": ["inputs/business/order-state.json"],
+      "expected_artifacts": ["expected/glossary.json"],
+      "provenance": [{"artifact": "expected/glossary.json", "source": "inputs/business/order-state.json", "line": 2, "path_line": "inputs/business/order-state.json:2"}],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-asis-projections",
+      "mode": "happy",
+      "inputs": ["inputs/legacy-react/src/OrdersPage.tsx", "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "inputs/business/order-state.json", "inputs/spec/requirements.md"],
+      "expected_artifacts": ["expected/asis/ui.md", "expected/asis/sequence.mmd", "expected/asis/dataflow.mmd", "expected/asis/story.md"],
+      "provenance": [
+        {"artifact": "expected/asis/ui.md", "source": "inputs/legacy-react/src/OrdersPage.tsx", "line": 3, "path_line": "inputs/legacy-react/src/OrdersPage.tsx:3"},
+        {"artifact": "expected/asis/sequence.mmd", "source": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java", "line": 10, "path_line": "inputs/legacy-vertx/src/main/java/example/OrderVerticle.java:10"},
+        {"artifact": "expected/asis/dataflow.mmd", "source": "inputs/business/order-state.json", "line": 3, "path_line": "inputs/business/order-state.json:3"},
+        {"artifact": "expected/asis/story.md", "source": "inputs/spec/requirements.md", "line": 3, "path_line": "inputs/spec/requirements.md:3"}
+      ],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {
+      "id": "happy-tobe-projections",
+      "mode": "happy",
+      "inputs": ["inputs/change/valid.md"],
+      "expected_artifacts": ["expected/tobe/ui.md", "expected/tobe/sequence.mmd", "expected/tobe/dataflow.mmd", "expected/tobe/story.md", "expected/tobe/test.md"],
+      "provenance": [
+        {"artifact": "expected/tobe/ui.md", "source": "inputs/change/valid.md", "line": 3, "path_line": "inputs/change/valid.md:3"},
+        {"artifact": "expected/tobe/sequence.mmd", "source": "inputs/change/valid.md", "line": 3, "path_line": "inputs/change/valid.md:3"},
+        {"artifact": "expected/tobe/dataflow.mmd", "source": "inputs/change/valid.md", "line": 3, "path_line": "inputs/change/valid.md:3"},
+        {"artifact": "expected/tobe/story.md", "source": "inputs/change/valid.md", "line": 3, "path_line": "inputs/change/valid.md:3"},
+        {"artifact": "expected/tobe/test.md", "source": "inputs/change/valid.md", "line": 3, "path_line": "inputs/change/valid.md:3"}
+      ],
+      "expected_exit": 0,
+      "expected_reason": "PASS"
+    },
+    {"id": "adversarial-malformed-json", "mode": "adversarial", "fixture": "adversarial/malformed.json", "expected_exit": 1, "expected_reason": "MALFORMED_JSON"},
+    {"id": "adversarial-dynamic-route", "mode": "adversarial", "fixture": "adversarial/dynamic-route.json", "expected_exit": 1, "expected_reason": "DYNAMIC_ROUTE_UNRESOLVED"},
+    {"id": "adversarial-dynamic-url", "mode": "adversarial", "fixture": "adversarial/dynamic-url.json", "expected_exit": 1, "expected_reason": "DYNAMIC_URL_AMBIGUOUS"},
+    {"id": "adversarial-duplicate-id", "mode": "adversarial", "fixture": "adversarial/duplicate-id.json", "expected_exit": 1, "expected_reason": "DUPLICATE_ID"},
+    {"id": "adversarial-duplicate-route", "mode": "adversarial", "fixture": "adversarial/duplicate-route.json", "expected_exit": 1, "expected_reason": "DUPLICATE_ROUTE"},
+    {"id": "adversarial-dangling-reference", "mode": "adversarial", "fixture": "adversarial/dangling-reference.json", "expected_exit": 1, "expected_reason": "DANGLING_REFERENCE"},
+    {"id": "adversarial-hidden-conflict", "mode": "adversarial", "fixture": "adversarial/hidden-conflict.json", "expected_exit": 1, "expected_reason": "HIDDEN_CONFLICT"},
+    {"id": "adversarial-provenance-mismatch", "mode": "adversarial", "fixture": "adversarial/provenance-mismatch.md", "expected_exit": 1, "expected_reason": "PROVENANCE_MISMATCH"},
+    {"id": "adversarial-invented-glossary", "mode": "adversarial", "fixture": "adversarial/invented-glossary.json", "expected_exit": 1, "expected_reason": "INVENTED_GLOSSARY"},
+    {"id": "adversarial-missing-golden", "mode": "adversarial", "mutation_target": "expected/tobe/test.md", "expected_exit": 1, "expected_reason": "MISSING_GOLDEN"},
+    {"id": "adversarial-output-path-escape", "mode": "adversarial", "fixture": "adversarial/output-path-escape.json", "expected_exit": 1, "expected_reason": "OUTPUT_PATH_ESCAPE"},
+    {"id": "adversarial-stale-progress", "mode": "adversarial", "fixture": "adversarial/stale-progress.json", "expected_exit": 1, "expected_reason": "STALE_PROGRESS"},
+    {"id": "adversarial-convention-violation", "mode": "adversarial", "fixture": "inputs/change/convention-violation.md", "expected_exit": 1, "expected_reason": "CONVENTION_VIOLATION"},
+    {"id": "adversarial-fake-secret", "mode": "adversarial", "fixture": "inputs/secrets/fake-secret.txt", "expected_exit": 1, "expected_reason": "SYNTHETIC_SECRET_INPUT"}
+  ]
+}

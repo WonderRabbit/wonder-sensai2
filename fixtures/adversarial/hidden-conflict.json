@@ -1,0 +1,7 @@
+{
+  "rules": [
+    {"id": "BIZ-RULE-001", "statement": "stock is never negative", "status": "exact"},
+    {"id": "BIZ-RULE-002", "statement": "backorders may make stock negative", "status": "exact"}
+  ],
+  "conflicts": []
+}

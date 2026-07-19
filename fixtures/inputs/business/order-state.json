@@ -1,0 +1,8 @@
+{
+  "entity": "Order",
+  "initial": "pending",
+  "transitions": [
+    {"from": "pending", "event": "payment_captured", "to": "paid"},
+    {"from": "paid", "event": "shipment_dispatched", "to": "shipped"}
+  ]
+}

@@ -1,0 +1,5 @@
+%% kind: asis
+%% provenance: inputs/business/order-state.json:3
+flowchart LR
+  UI[OrdersPage] -->|BIZ-FLOW-001| API[OrderVerticle]
+  API -->|BIZ-STATE-001| State[(Order state)]

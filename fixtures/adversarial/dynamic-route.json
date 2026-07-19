@@ -1,0 +1,6 @@
+{
+  "id": "ADV-DYNAMIC-ROUTE",
+  "route_expression": "basePath + '/' + resourceName",
+  "status": "unresolved",
+  "invalid_if_promoted_to_exact": true
+}

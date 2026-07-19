@@ -1,0 +1,290 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://wonder-sensai.local/schemas/progress.schema.json",
+	"title": "wonder-sensai 미션 진행 상태 1.0",
+	"description": "미션별 F0-F5 위치, 할 일 스냅샷, 재개 전제조건, 차단 항목과 사람 승인 근거를 보존하는 진행 기록이다.",
+	"$comment": "진실 우선순위는 검증된 trace.json, 검증된 progress.json, 파생 status.md, 세션 todo 순서다. 문서 간 상태 전이와 승인 영수증 파일은 저장소의 jq 동등성 검증기가 추가로 검사한다.",
+	"x-truth-priority": ["trace", "progress", "status", "todo"],
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"schema_version",
+		"mission_id",
+		"mission_root",
+		"phase",
+		"status",
+		"revision",
+		"todo_snapshot",
+		"precondition_fingerprints",
+		"next",
+		"blocked",
+		"unknowns",
+		"approvals",
+		"writer",
+		"updated_at",
+		"provenance"
+	],
+	"properties": {
+		"schema_version": {
+			"const": "1.0",
+			"description": "진행 기록 형식의 고정 버전이다."
+		},
+		"mission_id": {
+			"$ref": "#/$defs/mission_slug"
+		},
+		"mission_root": {
+			"type": "string",
+			"pattern": "^docs/analysis/missions/[a-z0-9]+(?:-[a-z0-9]+)*/$",
+			"description": "해당 미션 상태만 허용하는 저장소 상대 경로다."
+		},
+		"phase": {
+			"$ref": "#/$defs/phase"
+		},
+		"status": {
+			"$ref": "#/$defs/status"
+		},
+		"revision": {
+			"type": "integer",
+			"minimum": 1,
+			"description": "체크포인트를 쓸 때마다 정확히 하나씩 증가하는 개정 번호다."
+		},
+		"todo_snapshot": {
+			"type": "array",
+			"minItems": 1,
+			"uniqueItems": true,
+			"items": {
+				"$ref": "#/$defs/non_empty_string"
+			},
+			"description": "세션 할 일 뷰를 재구성하기 위한 작은 스냅샷이다."
+		},
+		"precondition_fingerprints": {
+			"$ref": "#/$defs/precondition_fingerprints"
+		},
+		"next": {
+			"$ref": "#/$defs/non_empty_string"
+		},
+		"blocked": {
+			"$ref": "#/$defs/string_list"
+		},
+		"unknowns": {
+			"$ref": "#/$defs/string_list"
+		},
+		"approvals": {
+			"type": "array",
+			"uniqueItems": true,
+			"items": {
+				"$ref": "#/$defs/approval"
+			},
+			"description": "사람이 직접 남긴 승인 또는 거절 영수증의 검증 가능한 참조다."
+		},
+		"writer": {
+			"const": "sensai-analysis-lead",
+			"description": "정규 미션 상태를 직렬로 쓰는 단일 작성자다."
+		},
+		"updated_at": {
+			"$ref": "#/$defs/timestamp"
+		},
+		"provenance": {
+			"type": "array",
+			"minItems": 1,
+			"items": {
+				"$ref": "#/$defs/provenance"
+			}
+		}
+	},
+	"allOf": [
+		{
+			"if": {
+				"properties": {
+					"status": {
+						"const": "planned"
+					}
+				},
+				"required": ["status"]
+			},
+			"then": {
+				"properties": {
+					"phase": {
+						"const": "F0"
+					}
+				}
+			}
+		},
+		{
+			"if": {
+				"properties": {
+					"status": {
+						"const": "awaiting_human_approval"
+					}
+				},
+				"required": ["status"]
+			},
+			"then": {
+				"properties": {
+					"phase": {
+						"enum": ["F0", "F3", "F5"]
+					}
+				}
+			}
+		},
+		{
+			"if": {
+				"properties": {
+					"status": {
+						"const": "completed"
+					}
+				},
+				"required": ["status"]
+			},
+			"then": {
+				"properties": {
+					"phase": {
+						"const": "F5"
+					},
+					"approvals": {
+						"contains": {
+							"type": "object",
+							"properties": {
+								"gate": {
+									"const": "F5"
+								},
+								"verdict": {
+									"const": "accepted"
+								}
+							},
+							"required": ["gate", "verdict"]
+						}
+					}
+				}
+			}
+		}
+	],
+	"$defs": {
+		"non_empty_string": {
+			"type": "string",
+			"minLength": 1
+		},
+		"mission_slug": {
+			"type": "string",
+			"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+			"description": "소문자 영숫자와 단일 하이픈으로 정규화한 미션 식별자다."
+		},
+		"phase": {
+			"type": "string",
+			"enum": ["F0", "F1", "F2", "F3", "F4", "F5"]
+		},
+		"status": {
+			"type": "string",
+			"enum": [
+				"planned",
+				"running",
+				"blocked",
+				"awaiting_human_approval",
+				"completed"
+			]
+		},
+		"sha256": {
+			"type": "string",
+			"pattern": "^[0-9a-f]{64}$"
+		},
+		"timestamp": {
+			"type": "string",
+			"pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+			"description": "초 단위 UTC 시각이다."
+		},
+		"safe_path": {
+			"type": "string",
+			"minLength": 1,
+			"pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+		},
+		"string_list": {
+			"type": "array",
+			"uniqueItems": true,
+			"items": {
+				"$ref": "#/$defs/non_empty_string"
+			}
+		},
+		"precondition_fingerprints": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["trace", "inputs"],
+			"properties": {
+				"trace": {
+					"$ref": "#/$defs/sha256"
+				},
+				"inputs": {
+					"$ref": "#/$defs/sha256"
+				},
+				"previous_progress": {
+					"$ref": "#/$defs/sha256"
+				},
+				"git_head": {
+					"type": "string",
+					"pattern": "^(?:UNBORN|[0-9a-f]{40})$"
+				},
+				"toolchain": {
+					"$ref": "#/$defs/sha256"
+				}
+			}
+		},
+		"approval": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"gate",
+				"verdict",
+				"reason",
+				"actor_role",
+				"source",
+				"receipt_path",
+				"receipt_sha256",
+				"recorded_at"
+			],
+			"properties": {
+				"gate": {
+					"enum": ["F0", "F3", "F5"]
+				},
+				"verdict": {
+					"enum": ["accepted", "rejected"]
+				},
+				"reason": {
+					"$ref": "#/$defs/non_empty_string"
+				},
+				"actor_role": {
+					"const": "human"
+				},
+				"source": {
+					"const": "elicited"
+				},
+				"receipt_path": {
+					"type": "string",
+					"pattern": "^docs/analysis/missions/[a-z0-9]+(?:-[a-z0-9]+)*/approvals/(?:F0|F3|F5)-approval\\.json$"
+				},
+				"receipt_sha256": {
+					"$ref": "#/$defs/sha256"
+				},
+				"recorded_at": {
+					"$ref": "#/$defs/timestamp"
+				}
+			}
+		},
+		"provenance": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["path", "line", "path_line"],
+			"properties": {
+				"path": {
+					"$ref": "#/$defs/safe_path"
+				},
+				"line": {
+					"type": "integer",
+					"minimum": 1
+				},
+				"path_line": {
+					"type": "string",
+					"pattern": "^.+:[1-9][0-9]*$"
+				}
+			}
+		}
+	}
+}

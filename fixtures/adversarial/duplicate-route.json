@@ -1,0 +1,6 @@
+{
+  "routes": [
+    {"id": "ROUTE-001", "method": "GET", "path": "/orders"},
+    {"id": "ROUTE-002", "method": "GET", "path": "/orders"}
+  ]
+}

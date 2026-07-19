@@ -1,0 +1,5 @@
+%% kind: tobe
+%% provenance: inputs/change/valid.md:3
+flowchart LR
+  Detail[Order detail] -->|DESIGN-PAGE-001| API[Order API]
+  API -->|BIZ-INVARIANT-001| State[(Paid order state)]

@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "mission_id": "fixture-mission",
+  "mission_root": "docs/analysis/missions/fixture-mission/",
+  "phase": "F3",
+  "status": "awaiting_human_approval",
+  "revision": 3,
+  "todo_snapshot": ["review AS-IS projections"],
+  "precondition_fingerprints": {
+    "trace": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "inputs": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "next": "record F3 approval receipt",
+  "blocked": ["human_approval:F3"],
+  "unknowns": ["dynamic tenant URL"],
+  "approvals": [],
+  "writer": "sensai-analysis-lead",
+  "updated_at": "2026-07-19T00:00:00Z",
+  "provenance": [
+    {"path": "inputs/spec/requirements.md", "line": 3, "path_line": "inputs/spec/requirements.md:3"}
+  ]
+}

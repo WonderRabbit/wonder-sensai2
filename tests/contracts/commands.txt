@@ -1,0 +1,9 @@
+commands/sensai/analyze-business.md
+commands/sensai/analyze.md
+commands/sensai/change-design.md
+commands/sensai/deliver.md
+commands/sensai/document-asis.md
+commands/sensai/resume.md
+commands/sensai/run.md
+commands/sensai/status.md
+commands/sensai/verify.md

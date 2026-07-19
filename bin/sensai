@@ -1,0 +1,950 @@
+#!/bin/sh
+
+set -u
+
+EX_USAGE=64
+EX_DATAERR=65
+EX_UNAVAILABLE=69
+EX_CANTCREAT=73
+EX_TEMPFAIL=75
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) || exit "$EX_UNAVAILABLE"
+SOURCE_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P) || exit "$EX_UNAVAILABLE"
+PROJECT_REQUEST=${SENSAI_PROJECT_ROOT:-$(pwd -P)}
+
+usage() {
+  cat <<'EOF'
+사용법:
+  ./bin/sensai help
+  ./bin/sensai doctor tools
+  ./bin/sensai doctor models
+  ./bin/sensai stage <absent-absolute-target>
+  ./bin/sensai install <absent-absolute-target>
+  ./bin/sensai mission init <mission-id> <target-relative-path> <goal>
+  ./bin/sensai mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>
+  ./bin/sensai mission status <mission-id>
+  ./bin/sensai mission resume <mission-id> [<expected-revision> <expected-sha256>]
+
+종료 코드:
+  0   성공
+  64  사용법 오류
+  65  입력·설정·제품 식별 오류
+  69  필수 도구 또는 transport 사용 불가
+  73  stage·install 대상이 이미 존재하거나 생성할 수 없음
+  75  잠금·revision·hash 충돌로 나중에 다시 시도해야 함
+
+이 CLI는 도구를 설치하거나 자격증명을 읽거나 모델을 호출하지 않는다.
+EOF
+}
+
+fail() {
+  FAIL_EXIT=$1
+  FAIL_REASON=$2
+  FAIL_DETAIL=$3
+  printf '오류 reason=%s detail=%s\n' "$FAIL_REASON" "$FAIL_DETAIL" >&2
+  exit "$FAIL_EXIT"
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "$EX_UNAVAILABLE" tool.unavailable "$1"
+}
+
+resolve_project_root() {
+  case "$PROJECT_REQUEST" in
+    /*) ;;
+    *) fail "$EX_DATAERR" mission.project_root_invalid relative_path ;;
+  esac
+  test -d "$PROJECT_REQUEST" && ! test -L "$PROJECT_REQUEST" || \
+    fail "$EX_DATAERR" mission.project_root_invalid non_directory
+  PROJECT_ROOT=$(CDPATH= cd -- "$PROJECT_REQUEST" 2>/dev/null && pwd -P) || \
+    fail "$EX_DATAERR" mission.project_root_invalid unresolved
+  case "$PROJECT_ROOT" in
+    /|'') fail "$EX_DATAERR" mission.project_root_invalid unsafe_root ;;
+  esac
+}
+
+sha256_file() {
+  SHA_OUTPUT=$(shasum -a 256 "$1" 2>/dev/null) || return 1
+  SHA_VALUE=${SHA_OUTPUT%% *}
+  case "$SHA_VALUE" in
+    *[!0-9a-f]*|'') return 1 ;;
+  esac
+  test "${#SHA_VALUE}" -eq 64
+}
+
+package_cleanup() {
+  PACKAGE_CLEANUP_EXIT=$?
+  if test -n "${PACKAGE_WORK:-}" && test -d "$PACKAGE_WORK" && ! test -L "$PACKAGE_WORK"; then
+    case "$PACKAGE_WORK" in
+      "${PACKAGE_PARENT:-}/.sensai-package."*)
+        rm -rf "$PACKAGE_WORK" 2>/dev/null || true
+        ;;
+    esac
+  fi
+  if test "${PACKAGE_LOCK_OWNED:-0}" -eq 1 && \
+     test -n "${PACKAGE_LOCK:-}" && test -d "$PACKAGE_LOCK" && ! test -L "$PACKAGE_LOCK"; then
+    case "$PACKAGE_LOCK" in
+      "${PACKAGE_PARENT:-}/.sensai-package-lock."*)
+        rmdir "$PACKAGE_LOCK" 2>/dev/null || true
+        ;;
+    esac
+  fi
+  return "$PACKAGE_CLEANUP_EXIT"
+}
+
+package_no_symlink_components() {
+  PACKAGE_CHECK_PATH=$1
+  case "$PACKAGE_CHECK_PATH" in
+    /*) ;;
+    *) return 1 ;;
+  esac
+  PACKAGE_CHECK_CURRENT=/
+  PACKAGE_CHECK_RELATIVE=${PACKAGE_CHECK_PATH#/}
+  PACKAGE_CHECK_OLD_IFS=$IFS
+  IFS=/
+  set -f
+  set -- $PACKAGE_CHECK_RELATIVE
+  set +f
+  IFS=$PACKAGE_CHECK_OLD_IFS
+  for PACKAGE_CHECK_COMPONENT do
+    case "$PACKAGE_CHECK_COMPONENT" in
+      ''|.) continue ;;
+      ..) return 1 ;;
+    esac
+    if test "$PACKAGE_CHECK_CURRENT" = /; then
+      PACKAGE_CHECK_CURRENT=/$PACKAGE_CHECK_COMPONENT
+    else
+      PACKAGE_CHECK_CURRENT=$PACKAGE_CHECK_CURRENT/$PACKAGE_CHECK_COMPONENT
+    fi
+    test ! -L "$PACKAGE_CHECK_CURRENT" || return 1
+  done
+  return 0
+}
+
+package_test_pause() {
+  PACKAGE_PAUSE_POINT=$1
+  test "${SENSAI_TEST_INTERNAL:-0}" = 1 || return 0
+  test "${SENSAI_TEST_PACKAGE_PAUSE:-}" = "$PACKAGE_PAUSE_POINT" || return 0
+  PACKAGE_READY=${SENSAI_TEST_PACKAGE_READY:-}
+  case "$PACKAGE_READY" in
+    "$PACKAGE_PARENT"/.sensai-test-ready.*) ;;
+    *) fail "$EX_DATAERR" package.test_hook_invalid ready_path ;;
+  esac
+  : >"$PACKAGE_READY" || fail "$EX_CANTCREAT" package.test_hook_failed ready
+  PACKAGE_PAUSE_ATTEMPT=0
+  while ! test -e "$PACKAGE_READY.release"; do
+    sleep 1
+    PACKAGE_PAUSE_ATTEMPT=$((PACKAGE_PAUSE_ATTEMPT + 1))
+    test "$PACKAGE_PAUSE_ATTEMPT" -lt 30 || \
+      fail "$EX_TEMPFAIL" package.test_hook_timeout "$PACKAGE_PAUSE_POINT"
+  done
+}
+
+package_source_leaf_regular() {
+  PACKAGE_ENTRY=$1
+  PACKAGE_CURRENT=$SOURCE_ROOT/output
+  test -d "$PACKAGE_CURRENT" && ! test -L "$PACKAGE_CURRENT" || return 1
+  PACKAGE_OLD_IFS=$IFS
+  IFS=/
+  set -f
+  set -- $PACKAGE_ENTRY
+  set +f
+  IFS=$PACKAGE_OLD_IFS
+  test "$#" -gt 0 || return 1
+  while test "$#" -gt 0; do
+    PACKAGE_COMPONENT=$1
+    shift
+    case "$PACKAGE_COMPONENT" in
+      ''|.|..) return 1 ;;
+    esac
+    PACKAGE_CURRENT=$PACKAGE_CURRENT/$PACKAGE_COMPONENT
+    test ! -L "$PACKAGE_CURRENT" || return 1
+    if test "$#" -gt 0; then
+      test -d "$PACKAGE_CURRENT" || return 1
+    else
+      test -f "$PACKAGE_CURRENT" || return 1
+    fi
+  done
+}
+
+package_prepare_target() {
+  PACKAGE_TARGET=$1
+  case "$PACKAGE_TARGET" in
+    /*) ;;
+    *) fail "$EX_DATAERR" package.target_not_absolute relative_path ;;
+  esac
+  case "$PACKAGE_TARGET" in
+    *//*|*/./*|*/../*) fail "$EX_DATAERR" package.target_not_normalized "$PACKAGE_TARGET" ;;
+  esac
+  case "$PACKAGE_TARGET" in
+    /|*/|*"
+"*|*"	"*) fail "$EX_DATAERR" package.target_invalid unsafe_path ;;
+  esac
+  if test -e "$PACKAGE_TARGET" || test -L "$PACKAGE_TARGET"; then
+    fail "$EX_CANTCREAT" package.target_exists "$PACKAGE_TARGET"
+  fi
+  PACKAGE_PARENT_REQUEST=$(dirname -- "$PACKAGE_TARGET") || \
+    fail "$EX_DATAERR" package.target_invalid dirname
+  PACKAGE_BASE=$(basename -- "$PACKAGE_TARGET") || \
+    fail "$EX_DATAERR" package.target_invalid basename
+  case "$PACKAGE_BASE" in
+    ''|.|..) fail "$EX_DATAERR" package.target_invalid basename ;;
+  esac
+  package_no_symlink_components "$PACKAGE_PARENT_REQUEST" || \
+    fail "$EX_CANTCREAT" package.parent_invalid symlink_or_traversal
+  test -d "$PACKAGE_PARENT_REQUEST" && ! test -L "$PACKAGE_PARENT_REQUEST" || \
+    fail "$EX_CANTCREAT" package.parent_invalid missing_or_symlink
+  PACKAGE_PARENT=$(CDPATH= cd -- "$PACKAGE_PARENT_REQUEST" 2>/dev/null && pwd -P) || \
+    fail "$EX_CANTCREAT" package.parent_invalid unresolved
+  case "$PACKAGE_PARENT" in
+    /) PACKAGE_EXPECTED_TARGET=/$PACKAGE_BASE ;;
+    *) PACKAGE_EXPECTED_TARGET=$PACKAGE_PARENT/$PACKAGE_BASE ;;
+  esac
+  test "$PACKAGE_EXPECTED_TARGET" = "$PACKAGE_TARGET" || \
+    fail "$EX_DATAERR" package.target_not_normalized "$PACKAGE_TARGET"
+}
+
+package_validate_source() {
+  for PACKAGE_COMMAND in shasum find sort awk sed cmp mktemp mkdir rm cp mv dirname basename; do
+    require_command "$PACKAGE_COMMAND"
+  done
+  PACKAGE_MANIFEST=$SOURCE_ROOT/manifest.txt
+  test -f "$PACKAGE_MANIFEST" && ! test -L "$PACKAGE_MANIFEST" || \
+    fail "$EX_DATAERR" package.manifest_invalid missing_or_symlink
+  LC_ALL=C sort "$PACKAGE_MANIFEST" >"$PACKAGE_WORK/manifest.sorted" || \
+    fail "$EX_UNAVAILABLE" package.manifest_unreadable sort
+  cmp -s "$PACKAGE_MANIFEST" "$PACKAGE_WORK/manifest.sorted" || \
+    fail "$EX_DATAERR" package.manifest_invalid unsorted
+  awk '
+    $0 == "" || $0 ~ /^#/ || $0 ~ /^\// || $0 ~ /(^|\/)\.\.?($|\/)/ ||
+    $0 ~ /[[:cntrl:]]/ || seen[$0]++ { bad=1 }
+    END { exit bad+0 }
+  ' "$PACKAGE_MANIFEST" || fail "$EX_DATAERR" package.manifest_invalid unsafe_or_duplicate
+  PACKAGE_COUNT=$(awk 'END {print NR+0}' "$PACKAGE_MANIFEST") || \
+    fail "$EX_UNAVAILABLE" package.manifest_unreadable count
+  test "$PACKAGE_COUNT" -eq 36 || \
+    fail "$EX_DATAERR" package.manifest_invalid "count=$PACKAGE_COUNT"
+
+  find "$SOURCE_ROOT/output" -mindepth 1 ! -type d -print | \
+    sed "s#^$SOURCE_ROOT/output/##" | LC_ALL=C sort >"$PACKAGE_WORK/output.leaves" || \
+    fail "$EX_UNAVAILABLE" package.source_scan_failed output
+  cmp -s "$PACKAGE_MANIFEST" "$PACKAGE_WORK/output.leaves" || \
+    fail "$EX_DATAERR" package.source_exact_set_mismatch output
+
+  : >"$PACKAGE_WORK/source.sha256" || \
+    fail "$EX_UNAVAILABLE" package.hash_write_failed source
+  while IFS= read -r PACKAGE_ENTRY; do
+    package_source_leaf_regular "$PACKAGE_ENTRY" || \
+      fail "$EX_DATAERR" package.source_leaf_invalid "$PACKAGE_ENTRY"
+    sha256_file "$SOURCE_ROOT/output/$PACKAGE_ENTRY" || \
+      fail "$EX_UNAVAILABLE" package.hash_failed "$PACKAGE_ENTRY"
+    printf '%s  %s\n' "$SHA_VALUE" "$PACKAGE_ENTRY" >>"$PACKAGE_WORK/source.sha256" || \
+      fail "$EX_UNAVAILABLE" package.hash_write_failed source
+  done <"$PACKAGE_MANIFEST"
+  sha256_file "$PACKAGE_MANIFEST" || fail "$EX_UNAVAILABLE" package.hash_failed manifest
+  PACKAGE_MANIFEST_SHA=$SHA_VALUE
+  sha256_file "$PACKAGE_WORK/source.sha256" || fail "$EX_UNAVAILABLE" package.hash_failed payload
+  PACKAGE_PAYLOAD_SHA=$SHA_VALUE
+  package_test_pause after-source-hash
+}
+
+package_verify_source_unchanged() {
+  : >"$PACKAGE_WORK/source.current.sha256" || \
+    fail "$EX_UNAVAILABLE" package.hash_write_failed source_current
+  while IFS= read -r PACKAGE_ENTRY; do
+    package_source_leaf_regular "$PACKAGE_ENTRY" || \
+      fail "$EX_DATAERR" package.source_leaf_invalid "$PACKAGE_ENTRY"
+    sha256_file "$SOURCE_ROOT/output/$PACKAGE_ENTRY" || \
+      fail "$EX_UNAVAILABLE" package.hash_failed "$PACKAGE_ENTRY"
+    printf '%s  %s\n' "$SHA_VALUE" "$PACKAGE_ENTRY" >>"$PACKAGE_WORK/source.current.sha256" || \
+      fail "$EX_UNAVAILABLE" package.hash_write_failed source_current
+  done <"$PACKAGE_MANIFEST"
+  cmp -s "$PACKAGE_WORK/source.sha256" "$PACKAGE_WORK/source.current.sha256" || \
+    fail "$EX_DATAERR" package.source_hash_drift payload
+}
+
+package_copy_tree() {
+  PACKAGE_TREE=$PACKAGE_WORK/tree
+  mkdir "$PACKAGE_TREE" || fail "$EX_CANTCREAT" package.stage_create_failed tree
+  while IFS= read -r PACKAGE_ENTRY; do
+    PACKAGE_DEST=$PACKAGE_TREE/$PACKAGE_ENTRY
+    PACKAGE_DEST_PARENT=$(dirname -- "$PACKAGE_DEST") || \
+      fail "$EX_UNAVAILABLE" package.stage_path_failed "$PACKAGE_ENTRY"
+    mkdir -p "$PACKAGE_DEST_PARENT" || \
+      fail "$EX_CANTCREAT" package.stage_create_failed "$PACKAGE_ENTRY"
+    cp "$SOURCE_ROOT/output/$PACKAGE_ENTRY" "$PACKAGE_DEST" || \
+      fail "$EX_CANTCREAT" package.copy_failed "$PACKAGE_ENTRY"
+    test -f "$PACKAGE_DEST" && ! test -L "$PACKAGE_DEST" || \
+      fail "$EX_DATAERR" package.stage_leaf_invalid "$PACKAGE_ENTRY"
+  done <"$PACKAGE_MANIFEST"
+
+  if test "${SENSAI_TEST_INTERNAL:-0}" = 1 && \
+     test "${SENSAI_TEST_PACKAGE_FAULT:-}" = staged-byte-drift; then
+    printf '\n테스트 전용 stage drift\n' >>"$PACKAGE_TREE/AGENTS.md" || \
+      fail "$EX_CANTCREAT" package.test_hook_failed staged_byte_drift
+  fi
+  package_verify_source_unchanged
+
+  find "$PACKAGE_TREE" -mindepth 1 ! -type d -print | \
+    sed "s#^$PACKAGE_TREE/##" | LC_ALL=C sort >"$PACKAGE_WORK/stage.leaves" || \
+    fail "$EX_UNAVAILABLE" package.stage_scan_failed tree
+  cmp -s "$PACKAGE_MANIFEST" "$PACKAGE_WORK/stage.leaves" || \
+    fail "$EX_DATAERR" package.stage_exact_set_mismatch tree
+  : >"$PACKAGE_WORK/stage.sha256" || \
+    fail "$EX_UNAVAILABLE" package.hash_write_failed stage
+  while IFS= read -r PACKAGE_ENTRY; do
+    sha256_file "$PACKAGE_TREE/$PACKAGE_ENTRY" || \
+      fail "$EX_UNAVAILABLE" package.hash_failed "$PACKAGE_ENTRY"
+    printf '%s  %s\n' "$SHA_VALUE" "$PACKAGE_ENTRY" >>"$PACKAGE_WORK/stage.sha256" || \
+      fail "$EX_UNAVAILABLE" package.hash_write_failed stage
+  done <"$PACKAGE_MANIFEST"
+  cmp -s "$PACKAGE_WORK/source.sha256" "$PACKAGE_WORK/stage.sha256" || \
+    fail "$EX_DATAERR" package.stage_hash_mismatch payload
+}
+
+package_deploy() {
+  PACKAGE_MODE=$1
+  shift
+  test "$#" -eq 1 || { usage >&2; exit "$EX_USAGE"; }
+  package_prepare_target "$1"
+  PACKAGE_LOCK=$PACKAGE_PARENT/.sensai-package-lock.$PACKAGE_BASE
+  PACKAGE_LOCK_OWNED=0
+  trap 'package_cleanup' EXIT
+  trap 'exit 130' HUP INT TERM
+  if ! mkdir "$PACKAGE_LOCK" 2>/dev/null; then
+    if test -e "$PACKAGE_LOCK" || test -L "$PACKAGE_LOCK"; then
+      fail "$EX_TEMPFAIL" package.locked lock_exists
+    fi
+    fail "$EX_CANTCREAT" package.lock_create_failed "$PACKAGE_LOCK"
+  fi
+  PACKAGE_LOCK_OWNED=1
+  package_test_pause after-lock
+  PACKAGE_WORK=$(mktemp -d "$PACKAGE_PARENT/.sensai-package.XXXXXX") || \
+    fail "$EX_CANTCREAT" package.stage_create_failed work
+  package_validate_source
+  package_copy_tree
+  if test -e "$PACKAGE_TARGET" || test -L "$PACKAGE_TARGET"; then
+    fail "$EX_CANTCREAT" package.target_exists "$PACKAGE_TARGET"
+  fi
+  if test "${SENSAI_TEST_INTERNAL:-0}" = 1 && \
+     test "${SENSAI_TEST_PACKAGE_FAULT:-}" = atomic-move; then
+    fail "$EX_CANTCREAT" package.atomic_move_failed simulated_exdev
+  fi
+  mv "$PACKAGE_TREE" "$PACKAGE_TARGET" || \
+    fail "$EX_CANTCREAT" package.atomic_move_failed "$PACKAGE_TARGET"
+  sha256_file "$PACKAGE_WORK/stage.sha256" || \
+    fail "$EX_UNAVAILABLE" package.hash_failed staged_payload
+  PACKAGE_STAGE_SHA=$SHA_VALUE
+  printf '패키지 mode=%s status=READY files=%s manifest_sha256=%s payload_sha256=%s stage_sha256=%s target=%s\n' \
+    "$PACKAGE_MODE" "$PACKAGE_COUNT" "$PACKAGE_MANIFEST_SHA" "$PACKAGE_PAYLOAD_SHA" \
+    "$PACKAGE_STAGE_SHA" "$PACKAGE_TARGET"
+}
+
+safe_relative_path() {
+  SAFE_VALUE=$1
+  case "$SAFE_VALUE" in
+    ''|/*|.|..|./*|*/.|*/..|../*|*/../*|*//*|*"
+"*|*"	"*) return 1 ;;
+  esac
+  return 0
+}
+
+mission_id_ok() {
+  printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$'
+}
+
+sha256_ok() {
+  printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[0-9a-f]{64}$'
+}
+
+revision_ok() {
+  case "$1" in
+    ''|*[!0-9]*|0) return 1 ;;
+  esac
+  return 0
+}
+
+no_symlink_components() {
+  NS_PATH=$1
+  case "$NS_PATH" in
+    "$PROJECT_ROOT") return 0 ;;
+    "$PROJECT_ROOT"/*) NS_REL=${NS_PATH#"$PROJECT_ROOT"/} ;;
+    *) return 1 ;;
+  esac
+  NS_CURRENT=$PROJECT_ROOT
+  NS_OLD_IFS=$IFS
+  IFS=/
+  set -f
+  set -- $NS_REL
+  set +f
+  IFS=$NS_OLD_IFS
+  for NS_PART do
+    test -n "$NS_PART" || return 1
+    NS_CURRENT=$NS_CURRENT/$NS_PART
+    if test -L "$NS_CURRENT"; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+resolve_project_path() {
+  safe_relative_path "$1" || return 1
+  RESOLVE_PATH=$PROJECT_ROOT/$1
+  no_symlink_components "$RESOLVE_PATH" || return 1
+  test -e "$RESOLVE_PATH" || return 1
+  RESOLVE_PARENT=$(dirname -- "$RESOLVE_PATH")
+  RESOLVE_PARENT_REAL=$(CDPATH= cd -- "$RESOLVE_PARENT" 2>/dev/null && pwd -P) || return 1
+  RESOLVE_BASE=$(basename -- "$RESOLVE_PATH")
+  RESOLVED_PATH=$RESOLVE_PARENT_REAL/$RESOLVE_BASE
+  case "$RESOLVED_PATH" in
+    "$PROJECT_ROOT"/*) ;;
+    *) return 1 ;;
+  esac
+  test ! -L "$RESOLVED_PATH"
+}
+
+hash_target() {
+  TARGET_RELATIVE=$1
+  resolve_project_path "$TARGET_RELATIVE" || return 1
+  if test -f "$RESOLVED_PATH"; then
+    sha256_file "$RESOLVED_PATH" || return 1
+    TARGET_HASH=$SHA_VALUE
+    return 0
+  fi
+  test -d "$RESOLVED_PATH" || return 1
+  if find "$RESOLVED_PATH" -type l -print -quit 2>/dev/null | grep -q .; then
+    return 1
+  fi
+  HASH_LIST=$MISSION_WORK/hash-inputs.txt
+  HASH_PATHS=$MISSION_WORK/hash-paths.txt
+  : >"$HASH_LIST" || return 1
+  find "$RESOLVED_PATH" \
+    -path "$PROJECT_ROOT/.git" -prune -o \
+    -path "$PROJECT_ROOT/.omo" -prune -o \
+    -path "$PROJECT_ROOT/docs/analysis/missions" -prune -o \
+    -type f -print 2>/dev/null | LC_ALL=C sort >"$HASH_PATHS" || return 1
+  if LC_ALL=C grep '[[:cntrl:]]' "$HASH_PATHS" >/dev/null 2>&1; then
+    return 1
+  fi
+  while IFS= read -r HASH_FILE; do
+    test -n "$HASH_FILE" || continue
+    sha256_file "$HASH_FILE" || return 1
+    HASH_RELATIVE=${HASH_FILE#"$PROJECT_ROOT"/}
+    printf '%s  %s\n' "$SHA_VALUE" "$HASH_RELATIVE" >>"$HASH_LIST" || return 1
+  done <"$HASH_PATHS"
+  sha256_file "$HASH_LIST" || return 1
+  TARGET_HASH=$SHA_VALUE
+}
+
+git_head() {
+  if git -C "$PROJECT_ROOT" rev-parse --verify HEAD >"$MISSION_WORK/git-head.txt" 2>/dev/null; then
+    read -r GIT_HEAD <"$MISSION_WORK/git-head.txt" || return 1
+    printf '%s\n' "$GIT_HEAD" | LC_ALL=C grep -Eq '^[0-9a-f]{40}$' || return 1
+  else
+    GIT_HEAD=UNBORN
+  fi
+}
+
+utc_now_after() {
+  UTC_PREVIOUS=$1
+  UTC_VALUE=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || return 1
+  UTC_ATTEMPT=0
+  while test -n "$UTC_PREVIOUS" && \
+    LC_ALL=C awk -v now="$UTC_VALUE" -v previous="$UTC_PREVIOUS" \
+      'BEGIN { exit !(now <= previous) }' && test "$UTC_ATTEMPT" -lt 3; do
+    sleep 1
+    UTC_VALUE=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || return 1
+    UTC_ATTEMPT=$((UTC_ATTEMPT + 1))
+  done
+  test -z "$UTC_PREVIOUS" || LC_ALL=C awk -v now="$UTC_VALUE" -v previous="$UTC_PREVIOUS" \
+    'BEGIN { exit !(now > previous) }'
+}
+
+validate_trace() {
+  TRACE_FILE=$1
+  test -f "$TRACE_FILE" && ! test -L "$TRACE_FILE" || return 1
+  jq empty "$SOURCE_ROOT/output/schemas/trace.schema.json" >/dev/null 2>&1 || return 1
+  jq -e '
+    type == "object"
+    and .schema_version == "2.0"
+    and (.mission_id | type == "string" and test("^[a-z0-9]+(?:-[a-z0-9]+)*$"))
+    and ((keys - [
+      "schema_version","mission_id","glossary_ref","evidence","conventions","requirements",
+      "frontends","backends","joins","business_entities","business_rules","business_flows",
+      "business_events","business_states","business_invariants","extension_requirements",
+      "designs","bindings","unknowns","unsupported","provenance"
+    ]) | length == 0)
+    and all([
+      .evidence,.conventions,.requirements,.frontends,.backends,.business_entities,.business_rules,
+      .business_flows,.business_events,.business_states,.business_invariants,
+      .extension_requirements,.designs,.bindings,.unknowns,.unsupported,.provenance
+    ][]; type == "array")
+  ' "$TRACE_FILE" >/dev/null 2>&1 || return 1
+  jq -e -f "$SOURCE_ROOT/output/recipes/trace.jq" "$TRACE_FILE" >/dev/null 2>&1
+}
+
+validate_progress() {
+  PROGRESS_FILE=$1
+  test -f "$PROGRESS_FILE" && ! test -L "$PROGRESS_FILE" || return 1
+  jq empty "$SOURCE_ROOT/output/schemas/progress.schema.json" >/dev/null 2>&1 || return 1
+  jq -n --slurpfile progress "$PROGRESS_FILE" \
+    '{mode:"validate",progress:$progress[0]}' >"$MISSION_WORK/progress-validate.json" || return 1
+  jq -e -f "$SOURCE_ROOT/output/recipes/progress.jq" \
+    "$MISSION_WORK/progress-validate.json" >/dev/null 2>&1
+}
+
+mission_paths() {
+  MISSION_ID=$1
+  mission_id_ok "$MISSION_ID" || fail "$EX_DATAERR" mission.id_invalid invalid_slug
+  MISSION_REL=docs/analysis/missions/$MISSION_ID
+  MISSION_DIR=$PROJECT_ROOT/$MISSION_REL
+  MISSION_TRACE=$MISSION_DIR/trace.json
+  MISSION_PROGRESS=$MISSION_DIR/progress.json
+  MISSION_STATUS=$MISSION_DIR/status.md
+  MISSION_LOCK=$MISSION_DIR/.sensai-lock
+}
+
+mission_work_prepare() {
+  require_command jq
+  require_command shasum
+  require_command git
+  require_command find
+  require_command sort
+  require_command awk
+  require_command grep
+  require_command date
+  require_command mv
+  require_command mkdir
+  require_command rmdir
+  require_command rm
+  require_command cp
+  require_command cat
+  require_command sleep
+  resolve_project_root
+  MISSION_WORK=$(mktemp -d "${TMPDIR:-/tmp}/sensai-cli.XXXXXX") || \
+    fail "$EX_UNAVAILABLE" mission.temp_unavailable create_failed
+  case "$MISSION_WORK" in
+    "${TMPDIR:-/tmp}"/sensai-cli.*) ;;
+    *) fail "$EX_UNAVAILABLE" mission.temp_unavailable unsafe_path ;;
+  esac
+  trap 'mission_cleanup' EXIT
+  trap 'exit 130' HUP INT TERM
+}
+
+mission_cleanup() {
+  if test "${LOCK_OWNED:-0}" -eq 1; then
+    rm -f "$MISSION_LOCK/owner" 2>/dev/null || true
+    rmdir "$MISSION_LOCK" 2>/dev/null || true
+    LOCK_OWNED=0
+  fi
+  for CLEAN_FILE in "${CHECKPOINT_TMP:-}" "${RESUME_TMP:-}"; do
+    test -n "$CLEAN_FILE" && test -f "$CLEAN_FILE" && rm -f "$CLEAN_FILE" 2>/dev/null || true
+  done
+  if test -n "${MISSION_DIR:-}"; then
+    for CLEAN_FILE in \
+      "$MISSION_DIR/.sensai-status.$$.md" \
+      "$MISSION_DIR/.sensai-progress.$$.json" \
+      "$MISSION_DIR/.sensai-progress-next.$$.json"; do
+      test -f "$CLEAN_FILE" && rm -f "$CLEAN_FILE" 2>/dev/null || true
+    done
+  fi
+  if test "${INIT_STAGE_OWNED:-0}" -eq 1; then
+    for CLEAN_FILE in \
+      "$INIT_STAGE/trace.json" "$INIT_STAGE/progress.json" "$INIT_STAGE/status.md"; do
+      test -f "$CLEAN_FILE" && rm -f "$CLEAN_FILE" 2>/dev/null || true
+    done
+    rmdir "$INIT_STAGE" 2>/dev/null || true
+  fi
+  if test "${INIT_LOCK_OWNED:-0}" -eq 1; then
+    rmdir "$INIT_LOCK" 2>/dev/null || true
+  fi
+  if test -n "${MISSION_WORK:-}"; then
+    for CLEAN_FILE in "$MISSION_WORK"/*; do
+      test -f "$CLEAN_FILE" && rm -f "$CLEAN_FILE" 2>/dev/null || true
+    done
+    rmdir "$MISSION_WORK" 2>/dev/null || true
+  fi
+}
+
+mission_lock_acquire() {
+  if ! mkdir "$MISSION_LOCK" 2>/dev/null; then
+    fail "$EX_TEMPFAIL" progress.resume.concurrent lock_exists
+  fi
+  LOCK_OWNED=1
+  printf 'pid=%s\n' "$$" >"$MISSION_LOCK/owner" || {
+    rmdir "$MISSION_LOCK" 2>/dev/null || true
+    fail "$EX_UNAVAILABLE" mission.lock_write_failed owner
+  }
+}
+
+mission_lock_release() {
+  test "${LOCK_OWNED:-0}" -eq 1 || return 0
+  rm -f "$MISSION_LOCK/owner" 2>/dev/null || return 1
+  rmdir "$MISSION_LOCK" 2>/dev/null || return 1
+  LOCK_OWNED=0
+}
+
+mission_observed() {
+  OBSERVED_PROGRESS=$1
+  OBSERVED_TARGET=$(jq -r '.provenance[0].path // empty' "$OBSERVED_PROGRESS" 2>/dev/null) || return 1
+  safe_relative_path "$OBSERVED_TARGET" || return 1
+  hash_target "$OBSERVED_TARGET" || return 1
+  OBSERVED_INPUTS=$TARGET_HASH
+  sha256_file "$MISSION_TRACE" || return 1
+  OBSERVED_TRACE=$SHA_VALUE
+  sha256_file "$SOURCE_ROOT/output/toolchain.lock.json" || return 1
+  OBSERVED_TOOLCHAIN=$SHA_VALUE
+  git_head || return 1
+}
+
+write_status_candidate() {
+  STATUS_PROGRESS=$1
+  STATUS_DEST=$2
+  jq -n --slurpfile progress "$STATUS_PROGRESS" \
+    '{mode:"status",progress:$progress[0]}' >"$MISSION_WORK/status-envelope.json" || return 1
+  jq -r -e -f "$SOURCE_ROOT/output/recipes/progress.jq" \
+    "$MISSION_WORK/status-envelope.json" >"$STATUS_DEST" 2>/dev/null
+}
+
+doctor_tools() {
+  test "$#" -eq 0 || { usage >&2; exit "$EX_USAGE"; }
+  DOCTOR_FAILED=0
+  for DOCTOR_TOOL in opencode fd rg sg jq yq mdq mmdc; do
+    if ! command -v "$DOCTOR_TOOL" >/dev/null 2>&1; then
+      printf '도구 tool=%s status=UNAVAILABLE reason=tool.unavailable\n' "$DOCTOR_TOOL" >&2
+      DOCTOR_FAILED=$EX_UNAVAILABLE
+      continue
+    fi
+    DOCTOR_VERSION=$($DOCTOR_TOOL --version 2>&1 | sed -n '1p')
+    case "$DOCTOR_TOOL:$DOCTOR_VERSION" in
+      opencode:1.18.3) DOCTOR_PRODUCT=OpenCode ;;
+      fd:'fd '*) DOCTOR_PRODUCT=fd ;;
+      rg:'ripgrep '*) DOCTOR_PRODUCT=ripgrep ;;
+      sg:'ast-grep '*) DOCTOR_PRODUCT=ast-grep ;;
+      jq:jq-*) DOCTOR_PRODUCT=jq ;;
+      yq:*github.com/mikefarah/yq*) DOCTOR_PRODUCT=MikeFarah-yq ;;
+      mdq:'mdq '*) DOCTOR_PRODUCT=mdq ;;
+      mmdc:[0-9]*.[0-9]*.[0-9]*) DOCTOR_PRODUCT=mermaid-cli ;;
+      *)
+        printf '도구 tool=%s status=INVALID reason=tool.identity_mismatch\n' "$DOCTOR_TOOL" >&2
+        test "$DOCTOR_FAILED" -eq "$EX_UNAVAILABLE" || DOCTOR_FAILED=$EX_DATAERR
+        continue
+        ;;
+    esac
+    printf '도구 tool=%s status=READY product=%s version=%s\n' \
+      "$DOCTOR_TOOL" "$DOCTOR_PRODUCT" "$DOCTOR_VERSION"
+  done
+  test "$DOCTOR_FAILED" -eq 0 || exit "$DOCTOR_FAILED"
+}
+
+doctor_models() {
+  test "$#" -eq 0 || { usage >&2; exit "$EX_USAGE"; }
+  require_command jq
+  LOCK=$SOURCE_ROOT/output/toolchain.lock.json
+  CONFIG=$SOURCE_ROOT/output/opencode.json
+  test -f "$LOCK" && test -f "$CONFIG" && ! test -L "$LOCK" && ! test -L "$CONFIG" || \
+    fail "$EX_UNAVAILABLE" model.config_unavailable missing_regular_file
+  jq empty "$LOCK" "$CONFIG" >/dev/null 2>&1 || \
+    fail "$EX_DATAERR" model.config_invalid malformed_json
+  if ! jq -e '
+    .opencode_version == "1.18.3"
+    and .model_aliases.lead == "zai/glm-5.2"
+    and .model_aliases.small == "sensai-ollama/qwen3.5:9b"
+    and .model_admission == "UNVERIFIED"
+  ' "$LOCK" >/dev/null 2>&1; then
+    fail "$EX_DATAERR" model.alias_mismatch toolchain_lock
+  fi
+  if ! jq -e '
+    .default_agent == "sensai-analysis-lead"
+    and .model == "zai/glm-5.2"
+    and .small_model == "sensai-ollama/qwen3.5:9b"
+    and (.provider["sensai-ollama"].models | has("qwen3.5:9b"))
+  ' "$CONFIG" >/dev/null 2>&1; then
+    fail "$EX_DATAERR" model.alias_mismatch opencode_config
+  fi
+  if ! jq -e '
+    .provider["sensai-ollama"].npm == "@ai-sdk/openai-compatible"
+    and .provider["sensai-ollama"].options.baseURL == "http://localhost:11434/v1"
+  ' "$CONFIG" >/dev/null 2>&1; then
+    fail "$EX_UNAVAILABLE" model.transport_unavailable configured_transport
+  fi
+  printf '%s\n' '모델 discovery=READY reason=model.config_ready'
+  printf '%s\n' '모델 alias=zai/glm-5.2 admission=UNVERIFIED reason=MODEL_ADMISSION_UNVERIFIED'
+  printf '%s\n' '모델 alias=sensai-ollama/qwen3.5:9b admission=UNVERIFIED reason=MODEL_ADMISSION_UNVERIFIED'
+}
+
+mission_init() {
+  test "$#" -eq 3 || { usage >&2; exit "$EX_USAGE"; }
+  mission_work_prepare
+  mission_paths "$1"
+  INIT_TARGET=$2
+  INIT_GOAL=$3
+  safe_relative_path "$INIT_TARGET" || fail "$EX_DATAERR" mission.target_invalid unsafe_path
+  test -n "$INIT_GOAL" || fail "$EX_DATAERR" mission.goal_invalid empty
+  hash_target "$INIT_TARGET" || fail "$EX_DATAERR" mission.target_invalid unresolved_or_symlink
+  INIT_INPUTS_HASH=$TARGET_HASH
+  sha256_file "$SOURCE_ROOT/output/toolchain.lock.json" || \
+    fail "$EX_UNAVAILABLE" mission.toolchain_unavailable hash_failed
+  INIT_TOOLCHAIN_HASH=$SHA_VALUE
+  git_head || fail "$EX_UNAVAILABLE" mission.git_state_unavailable read_failed
+  INIT_GIT_HEAD=$GIT_HEAD
+  utc_now_after '' || fail "$EX_UNAVAILABLE" mission.clock_unavailable utc
+  INIT_TIMESTAMP=$UTC_VALUE
+
+  INIT_PARENT=$PROJECT_ROOT/docs/analysis/missions
+  no_symlink_components "$PROJECT_ROOT/docs" || fail "$EX_DATAERR" mission.path_symlink docs
+  mkdir -p "$INIT_PARENT" 2>/dev/null || fail "$EX_UNAVAILABLE" mission.root_unavailable mkdir
+  no_symlink_components "$INIT_PARENT" || fail "$EX_DATAERR" mission.path_symlink mission_parent
+  test ! -e "$MISSION_DIR" && test ! -L "$MISSION_DIR" || \
+    fail "$EX_TEMPFAIL" mission.already_exists existing
+  INIT_LOCK=$INIT_PARENT/.sensai-init-$MISSION_ID.lock
+  mkdir "$INIT_LOCK" 2>/dev/null || fail "$EX_TEMPFAIL" progress.resume.concurrent init_lock
+  INIT_LOCK_OWNED=1
+  INIT_STAGE=$INIT_PARENT/.sensai-init-$MISSION_ID.$$
+  if test -e "$INIT_STAGE" || ! mkdir "$INIT_STAGE" 2>/dev/null; then
+    rmdir "$INIT_LOCK" 2>/dev/null || true
+    fail "$EX_TEMPFAIL" mission.init_conflict stage
+  fi
+  INIT_STAGE_OWNED=1
+
+  jq -n --arg mission "$MISSION_ID" --arg goal "$INIT_GOAL" --arg target "$INIT_TARGET" '
+    {
+      schema_version:"2.0", mission_id:$mission,
+      evidence:[], conventions:[], requirements:[], frontends:[], backends:[], joins:[],
+      business_entities:[], business_rules:[], business_flows:[], business_events:[],
+      business_states:[], business_invariants:[], extension_requirements:[], designs:[],
+      bindings:[], unknowns:[], unsupported:[],
+      provenance:[{path:$target,line:1,path_line:($target + ":1")}]
+    }
+  ' >"$INIT_STAGE/trace.json" || fail "$EX_UNAVAILABLE" mission.write_failed trace_candidate
+  validate_trace "$INIT_STAGE/trace.json" || fail "$EX_DATAERR" mission.trace_invalid initialized_trace
+  sha256_file "$INIT_STAGE/trace.json" || fail "$EX_UNAVAILABLE" mission.write_failed trace_hash
+  INIT_TRACE_HASH=$SHA_VALUE
+  jq -n \
+    --arg mission "$MISSION_ID" --arg root "$MISSION_REL/" --arg target "$INIT_TARGET" \
+    --arg trace "$INIT_TRACE_HASH" --arg inputs "$INIT_INPUTS_HASH" \
+    --arg git "$INIT_GIT_HEAD" --arg toolchain "$INIT_TOOLCHAIN_HASH" \
+    --arg updated "$INIT_TIMESTAMP" '
+    {
+      schema_version:"1.0", mission_id:$mission, mission_root:$root,
+      phase:"F0", status:"planned", revision:1,
+      todo_snapshot:["F0 미션 계획과 사람 승인 대기"],
+      precondition_fingerprints:{trace:$trace,inputs:$inputs,git_head:$git,toolchain:$toolchain},
+      next:"F0 계획을 검토하고 사람 승인 영수증을 기록한다",
+      blocked:[], unknowns:[], approvals:[], writer:"sensai-analysis-lead",
+      updated_at:$updated,
+      provenance:[{path:$target,line:1,path_line:($target + ":1")}]
+    }
+  ' >"$INIT_STAGE/progress.json" || fail "$EX_UNAVAILABLE" mission.write_failed progress_candidate
+  validate_progress "$INIT_STAGE/progress.json" || \
+    fail "$EX_DATAERR" progress.resume.corrupt initialized_progress
+  write_status_candidate "$INIT_STAGE/progress.json" "$INIT_STAGE/status.md" || \
+    fail "$EX_DATAERR" progress.status_invalid initialized_progress
+  test ! -e "$MISSION_DIR" || fail "$EX_TEMPFAIL" mission.already_exists raced
+  mv "$INIT_STAGE" "$MISSION_DIR" 2>/dev/null || fail "$EX_TEMPFAIL" mission.atomic_rename_failed init
+  INIT_STAGE_OWNED=0
+  rmdir "$INIT_LOCK" 2>/dev/null || fail "$EX_UNAVAILABLE" mission.lock_cleanup_failed init
+  INIT_LOCK_OWNED=0
+  sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.write_failed progress_hash
+  printf '미션 mission_id=%s status=INITIALIZED revision=1 progress_sha256=%s\n' \
+    "$MISSION_ID" "$SHA_VALUE"
+}
+
+mission_checkpoint() {
+  test "$#" -eq 4 || { usage >&2; exit "$EX_USAGE"; }
+  mission_work_prepare
+  mission_paths "$1"
+  CHECKPOINT_CANDIDATE=$2
+  CHECKPOINT_EXPECTED_REVISION=$3
+  CHECKPOINT_EXPECTED_HASH=$4
+  revision_ok "$CHECKPOINT_EXPECTED_REVISION" || fail "$EX_USAGE" mission.revision_invalid usage
+  sha256_ok "$CHECKPOINT_EXPECTED_HASH" || fail "$EX_USAGE" mission.hash_invalid usage
+  test -d "$MISSION_DIR" && ! test -L "$MISSION_DIR" && no_symlink_components "$MISSION_DIR" || \
+    fail "$EX_DATAERR" mission.path_invalid missing_or_symlink
+  resolve_project_path "$CHECKPOINT_CANDIDATE" || \
+    fail "$EX_DATAERR" mission.candidate_invalid unsafe_path
+  CHECKPOINT_SOURCE=$RESOLVED_PATH
+  test -f "$CHECKPOINT_SOURCE" || fail "$EX_DATAERR" mission.candidate_invalid not_file
+  mission_lock_acquire
+  validate_trace "$MISSION_TRACE" || fail "$EX_DATAERR" progress.resume.corrupt trace
+  validate_progress "$MISSION_PROGRESS" || fail "$EX_DATAERR" progress.resume.corrupt progress
+  sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.hash_unavailable progress
+  ACTIVE_HASH=$SHA_VALUE
+  ACTIVE_REVISION=$(jq -r '.revision' "$MISSION_PROGRESS" 2>/dev/null) || \
+    fail "$EX_DATAERR" progress.resume.corrupt revision
+  test "$ACTIVE_HASH" = "$CHECKPOINT_EXPECTED_HASH" || \
+    fail "$EX_TEMPFAIL" progress.resume.stale_hash active_progress
+  test "$ACTIVE_REVISION" = "$CHECKPOINT_EXPECTED_REVISION" || \
+    fail "$EX_TEMPFAIL" progress.resume.stale_revision active_progress
+  cp "$CHECKPOINT_SOURCE" "$MISSION_DIR/.sensai-progress.$$.json" || \
+    fail "$EX_UNAVAILABLE" mission.write_failed checkpoint_copy
+  CHECKPOINT_TMP=$MISSION_DIR/.sensai-progress.$$.json
+  validate_progress "$CHECKPOINT_TMP" || fail "$EX_DATAERR" progress.resume.corrupt candidate
+  mission_observed "$CHECKPOINT_TMP" || fail "$EX_DATAERR" progress.resume.precondition_inputs target
+  jq -n --slurpfile previous "$MISSION_PROGRESS" --slurpfile current "$CHECKPOINT_TMP" \
+    --arg previous_hash "$ACTIVE_HASH" --arg trace "$OBSERVED_TRACE" --arg inputs "$OBSERVED_INPUTS" \
+    --arg git "$GIT_HEAD" --arg toolchain "$OBSERVED_TOOLCHAIN" '
+    {
+      mode:"transition", previous:$previous[0], current:$current[0],
+      previous_sha256:$previous_hash, active_progress_sha256:$previous_hash,
+      observed_fingerprints:{trace:$trace,inputs:$inputs,git_head:$git,toolchain:$toolchain}
+    }
+  ' >"$MISSION_WORK/transition.json" || fail "$EX_UNAVAILABLE" mission.write_failed transition_envelope
+  jq -e -f "$SOURCE_ROOT/output/recipes/progress.jq" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
+    fail "$EX_DATAERR" progress.transition.invalid candidate
+  write_status_candidate "$CHECKPOINT_TMP" "$MISSION_DIR/.sensai-status.$$.md" || \
+    fail "$EX_DATAERR" progress.status_invalid candidate
+  sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.hash_unavailable pre_rename
+  test "$SHA_VALUE" = "$ACTIVE_HASH" || fail "$EX_TEMPFAIL" progress.resume.stale_hash pre_rename
+  mv "$CHECKPOINT_TMP" "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.atomic_rename_failed progress
+  mv "$MISSION_DIR/.sensai-status.$$.md" "$MISSION_STATUS" || \
+    fail "$EX_UNAVAILABLE" mission.atomic_rename_failed status
+  mission_lock_release || fail "$EX_UNAVAILABLE" mission.lock_cleanup_failed checkpoint
+  sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.hash_unavailable committed
+  NEW_REVISION=$(jq -r '.revision' "$MISSION_PROGRESS") || fail "$EX_DATAERR" progress.resume.corrupt committed
+  printf '미션 mission_id=%s status=CHECKPOINTED revision=%s progress_sha256=%s\n' \
+    "$MISSION_ID" "$NEW_REVISION" "$SHA_VALUE"
+}
+
+mission_status() {
+  test "$#" -eq 1 || { usage >&2; exit "$EX_USAGE"; }
+  mission_work_prepare
+  mission_paths "$1"
+  test -d "$MISSION_DIR" && ! test -L "$MISSION_DIR" && no_symlink_components "$MISSION_DIR" || \
+    fail "$EX_DATAERR" mission.path_invalid missing_or_symlink
+  validate_trace "$MISSION_TRACE" || fail "$EX_DATAERR" progress.resume.corrupt trace
+  validate_progress "$MISSION_PROGRESS" || fail "$EX_DATAERR" progress.resume.corrupt progress
+  mission_observed "$MISSION_PROGRESS" || fail "$EX_DATAERR" progress.resume.precondition_inputs target
+  EXPECT_TRACE=$(jq -r '.precondition_fingerprints.trace' "$MISSION_PROGRESS") || \
+    fail "$EX_DATAERR" progress.resume.corrupt trace_hash
+  EXPECT_INPUTS=$(jq -r '.precondition_fingerprints.inputs' "$MISSION_PROGRESS") || \
+    fail "$EX_DATAERR" progress.resume.corrupt inputs_hash
+  test "$EXPECT_TRACE" = "$OBSERVED_TRACE" || fail "$EX_TEMPFAIL" progress.resume.precondition_trace mismatch
+  test "$EXPECT_INPUTS" = "$OBSERVED_INPUTS" || fail "$EX_TEMPFAIL" progress.resume.precondition_inputs mismatch
+  write_status_candidate "$MISSION_PROGRESS" "$MISSION_WORK/status.md" || \
+    fail "$EX_DATAERR" progress.status_invalid current
+  cat "$MISSION_WORK/status.md"
+}
+
+mission_resume() {
+  test "$#" -eq 1 || test "$#" -eq 3 || { usage >&2; exit "$EX_USAGE"; }
+  mission_work_prepare
+  mission_paths "$1"
+  RESUME_EXPECTED_REVISION=''
+  RESUME_EXPECTED_HASH=''
+  if test "$#" -eq 3; then
+    RESUME_EXPECTED_REVISION=$2
+    RESUME_EXPECTED_HASH=$3
+    revision_ok "$RESUME_EXPECTED_REVISION" || fail "$EX_USAGE" mission.revision_invalid usage
+    sha256_ok "$RESUME_EXPECTED_HASH" || fail "$EX_USAGE" mission.hash_invalid usage
+  fi
+  test -d "$MISSION_DIR" && ! test -L "$MISSION_DIR" && no_symlink_components "$MISSION_DIR" || \
+    fail "$EX_DATAERR" mission.path_invalid missing_or_symlink
+  mission_lock_acquire
+  validate_trace "$MISSION_TRACE" || fail "$EX_DATAERR" progress.resume.corrupt trace
+  validate_progress "$MISSION_PROGRESS" || fail "$EX_DATAERR" progress.resume.corrupt progress
+  sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.hash_unavailable progress
+  ACTIVE_HASH=$SHA_VALUE
+  ACTIVE_REVISION=$(jq -r '.revision' "$MISSION_PROGRESS") || fail "$EX_DATAERR" progress.resume.corrupt revision
+  test -z "$RESUME_EXPECTED_HASH" || test "$RESUME_EXPECTED_HASH" = "$ACTIVE_HASH" || \
+    fail "$EX_TEMPFAIL" progress.resume.stale_hash active_progress
+  test -z "$RESUME_EXPECTED_REVISION" || test "$RESUME_EXPECTED_REVISION" = "$ACTIVE_REVISION" || \
+    fail "$EX_TEMPFAIL" progress.resume.stale_revision active_progress
+  ACTIVE_STATUS=$(jq -r '.status' "$MISSION_PROGRESS") || fail "$EX_DATAERR" progress.resume.corrupt status
+  test "$ACTIVE_STATUS" != completed || fail "$EX_DATAERR" progress.resume.terminal completed
+  mission_observed "$MISSION_PROGRESS" || fail "$EX_DATAERR" progress.resume.precondition_inputs target
+  EXPECT_TRACE=$(jq -r '.precondition_fingerprints.trace' "$MISSION_PROGRESS") || \
+    fail "$EX_DATAERR" progress.resume.corrupt trace_hash
+  EXPECT_INPUTS=$(jq -r '.precondition_fingerprints.inputs' "$MISSION_PROGRESS") || \
+    fail "$EX_DATAERR" progress.resume.corrupt inputs_hash
+  test "$EXPECT_TRACE" = "$OBSERVED_TRACE" || fail "$EX_TEMPFAIL" progress.resume.precondition_trace mismatch
+  test "$EXPECT_INPUTS" = "$OBSERVED_INPUTS" || fail "$EX_TEMPFAIL" progress.resume.precondition_inputs mismatch
+  ACTIVE_UPDATED=$(jq -r '.updated_at' "$MISSION_PROGRESS") || fail "$EX_DATAERR" progress.resume.corrupt updated_at
+  utc_now_after "$ACTIVE_UPDATED" || fail "$EX_UNAVAILABLE" mission.clock_unavailable monotonic
+  cp "$MISSION_PROGRESS" "$MISSION_DIR/.sensai-progress.$$.json" || \
+    fail "$EX_UNAVAILABLE" mission.write_failed resume_copy
+  RESUME_TMP=$MISSION_DIR/.sensai-progress.$$.json
+  jq --arg previous "$ACTIVE_HASH" --arg trace "$OBSERVED_TRACE" --arg inputs "$OBSERVED_INPUTS" \
+    --arg git "$GIT_HEAD" --arg toolchain "$OBSERVED_TOOLCHAIN" --arg updated "$UTC_VALUE" '
+    .revision += 1
+    | .precondition_fingerprints.previous_progress=$previous
+    | .precondition_fingerprints.trace=$trace
+    | .precondition_fingerprints.inputs=$inputs
+    | .precondition_fingerprints.git_head=$git
+    | .precondition_fingerprints.toolchain=$toolchain
+    | .updated_at=$updated
+  ' "$RESUME_TMP" >"$MISSION_DIR/.sensai-progress-next.$$.json" || \
+    fail "$EX_UNAVAILABLE" mission.write_failed resume_candidate
+  rm -f "$RESUME_TMP" || fail "$EX_UNAVAILABLE" mission.cleanup_failed resume_old_candidate
+  RESUME_TMP=$MISSION_DIR/.sensai-progress-next.$$.json
+  jq -n --slurpfile previous "$MISSION_PROGRESS" --slurpfile current "$RESUME_TMP" \
+    --arg previous_hash "$ACTIVE_HASH" --arg trace "$OBSERVED_TRACE" --arg inputs "$OBSERVED_INPUTS" \
+    --arg git "$GIT_HEAD" --arg toolchain "$OBSERVED_TOOLCHAIN" '
+    {
+      mode:"transition", previous:$previous[0], current:$current[0],
+      previous_sha256:$previous_hash, active_progress_sha256:$previous_hash,
+      observed_fingerprints:{trace:$trace,inputs:$inputs,git_head:$git,toolchain:$toolchain}
+    }
+  ' >"$MISSION_WORK/transition.json" || fail "$EX_UNAVAILABLE" mission.write_failed transition_envelope
+  jq -e -f "$SOURCE_ROOT/output/recipes/progress.jq" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
+    fail "$EX_DATAERR" progress.transition.invalid resume_candidate
+  write_status_candidate "$RESUME_TMP" "$MISSION_DIR/.sensai-status.$$.md" || \
+    fail "$EX_DATAERR" progress.status_invalid resume_candidate
+  sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.hash_unavailable pre_rename
+  test "$SHA_VALUE" = "$ACTIVE_HASH" || fail "$EX_TEMPFAIL" progress.resume.stale_hash pre_rename
+  mv "$RESUME_TMP" "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.atomic_rename_failed progress
+  mv "$MISSION_DIR/.sensai-status.$$.md" "$MISSION_STATUS" || \
+    fail "$EX_UNAVAILABLE" mission.atomic_rename_failed status
+  mission_lock_release || fail "$EX_UNAVAILABLE" mission.lock_cleanup_failed resume
+  sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.hash_unavailable committed
+  NEW_HASH=$SHA_VALUE
+  NEW_REVISION=$(jq -r '.revision' "$MISSION_PROGRESS") || fail "$EX_DATAERR" progress.resume.corrupt committed
+  jq -n --slurpfile progress "$MISSION_PROGRESS" --arg hash "$NEW_HASH" '
+    {
+      mission_id:$progress[0].mission_id, phase:$progress[0].phase,
+      status:$progress[0].status, revision:$progress[0].revision,
+      progress_sha256:$hash, next:$progress[0].next,
+      todo_snapshot:$progress[0].todo_snapshot,
+      model_admission:"UNVERIFIED"
+    }
+  '
+}
+
+case "${1:-}" in
+  help|-h|--help)
+    test "$#" -eq 1 || { usage >&2; exit "$EX_USAGE"; }
+    usage
+    ;;
+  doctor)
+    test "$#" -ge 2 || { usage >&2; exit "$EX_USAGE"; }
+    DOCTOR_SUB=$2
+    shift 2
+    case "$DOCTOR_SUB" in
+      tools) doctor_tools "$@" ;;
+      models) doctor_models "$@" ;;
+      *) usage >&2; exit "$EX_USAGE" ;;
+    esac
+    ;;
+  stage)
+    shift
+    package_deploy stage "$@"
+    ;;
+  install)
+    shift
+    package_deploy install "$@"
+    ;;
+  mission)
+    test "$#" -ge 2 || { usage >&2; exit "$EX_USAGE"; }
+    MISSION_SUB=$2
+    shift 2
+    case "$MISSION_SUB" in
+      init) mission_init "$@" ;;
+      checkpoint) mission_checkpoint "$@" ;;
+      status) mission_status "$@" ;;
+      resume) mission_resume "$@" ;;
+      *) usage >&2; exit "$EX_USAGE" ;;
+    esac
+    ;;
+  *) usage >&2; exit "$EX_USAGE" ;;
+esac

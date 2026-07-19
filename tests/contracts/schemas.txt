@@ -1,0 +1,2 @@
+schemas/progress.schema.json
+schemas/trace.schema.json

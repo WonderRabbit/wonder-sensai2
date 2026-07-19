@@ -1,0 +1,135 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "provider": {
+    "sensai-ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Sensai Ollama 근거 피어",
+      "options": {
+        "baseURL": "http://localhost:11434/v1",
+        "apiKey": "ollama"
+      },
+      "models": {
+        "qwen3.5:9b": {
+          "name": "Qwen3.5-9B Ollama 로컬 모델"
+        }
+      }
+    }
+  },
+  "model": "zai/glm-5.2",
+  "small_model": "sensai-ollama/qwen3.5:9b",
+  "default_agent": "sensai-analysis-lead",
+  "share": "disabled",
+  "autoupdate": false,
+  "subagent_depth": 1,
+  "watcher": {
+    "ignore": [
+      ".git/**",
+      ".omo/**",
+      "docs/analysis/missions/**/.sensai-tmp/**"
+    ]
+  },
+  "compaction": {
+    "auto": true,
+    "prune": true
+  },
+  "agent": {
+    "compaction": {
+      "model": "zai/glm-5.2"
+    }
+  },
+  "permission": {
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.pem": "deny",
+      "*id_rsa*": "deny",
+      "*credentials*": "deny",
+      "*secrets.*": "deny",
+      "auth.json": "deny",
+      "**/.env": "deny",
+      "**/.env.*": "deny",
+      "**/auth.json": "deny",
+      "**/.ssh/**": "deny",
+      "**/.aws/**": "deny",
+      "**/.config/opencode/**": "deny",
+      "**/.local/share/opencode/**": "deny"
+    },
+    "edit": {
+      "*": "deny",
+      "docs/analysis/missions/**": "allow",
+      "**/../**": "deny"
+    },
+    "bash": {
+      "*": "deny",
+      "fd": "allow",
+      "fd *": "allow",
+      "rg": "allow",
+      "rg *": "allow",
+      "sg": "allow",
+      "sg *": "allow",
+      "jq": "allow",
+      "jq *": "allow",
+      "yq": "allow",
+      "yq *": "allow",
+      "mdq": "allow",
+      "mdq *": "allow",
+      "mmdc": "allow",
+      "mmdc *": "allow",
+      "*|*": "deny",
+      "*>*": "deny",
+      "*<*": "deny",
+      "*`*": "deny",
+      "*$(*": "deny",
+      "*;*": "deny",
+      "*&&*": "deny",
+      "*||*": "deny",
+      "fd *--exec*": "deny",
+      "fd *-x*": "deny",
+      "fd *-X*": "deny",
+      "rg *--pre*": "deny",
+      "sg *--rewrite*": "deny",
+      "sg *-r*": "deny",
+      "sg *--update-all*": "deny",
+      "yq *-i*": "deny",
+      "yq *--inplace*": "deny",
+      "**.env*": "deny",
+      "**.pem*": "deny",
+      "**id_rsa*": "deny",
+      "**credentials*": "deny",
+      "**secrets.*": "deny",
+      "**/auth.json*": "deny",
+      "**/.ssh/**": "deny",
+      "**/.aws/**": "deny",
+      "**/.config/opencode/**": "deny",
+      "**/.local/share/opencode/**": "deny"
+    },
+    "task": {
+      "*": "deny",
+      "sensai-evidence-peer": "allow"
+    },
+    "skill": {
+      "*": "deny",
+      "sensai-business-trace": "allow",
+      "sensai-checklist": "allow",
+      "sensai-convention-extract": "allow",
+      "sensai-evidence-first": "allow",
+      "sensai-mermaid-sequence": "allow",
+      "sensai-react-trace": "allow",
+      "sensai-spec-evidence": "allow",
+      "sensai-stack-discovery": "allow",
+      "sensai-ui-definition": "allow",
+      "sensai-vertx-trace": "allow"
+    },
+    "external_directory": "deny",
+    "todowrite": "allow",
+    "question": "allow",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "lsp": "deny",
+    "doom_loop": "deny"
+  }
+}

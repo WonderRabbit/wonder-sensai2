@@ -1,0 +1,14 @@
+{
+  "lock_version": "1.0",
+  "opencode_version": "1.18.3",
+  "model_aliases": {
+    "lead": "zai/glm-5.2",
+    "small": "sensai-ollama/qwen3.5:9b"
+  },
+  "default_agent": "sensai-analysis-lead",
+  "schema_versions": {
+    "trace": "2.0",
+    "progress": "1.0"
+  },
+  "model_admission": "UNVERIFIED"
+}

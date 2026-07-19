@@ -1,0 +1,5 @@
+{
+  "mission_id": "fixture-mission",
+  "output_path": "../escaped/result.json",
+  "expected_boundary": "docs/analysis/missions/fixture-mission/"
+}

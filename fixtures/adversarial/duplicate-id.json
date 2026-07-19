@@ -1,0 +1,7 @@
+{
+  "schema_version": "2.0",
+  "evidence": [
+    {"id": "E-DUP-001", "path_line": "inputs/spec/requirements.md:3"},
+    {"id": "E-DUP-001", "path_line": "inputs/spec/requirements.md:4"}
+  ]
+}
