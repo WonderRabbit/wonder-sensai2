@@ -1,12 +1,15 @@
 #!/bin/sh
+. "$SCRIPT_DIR/cases/doctor/command-binding.sh"
 
 doctor_run() {
   DOCTOR_CLI=$SOURCE_ROOT/bin/sensai
   DOCTOR_RUN_TMP=$(CDPATH= cd -- "$RUN_TMP" 2>/dev/null && pwd -P) || return 70
   DOCTOR_BASE=$DOCTOR_RUN_TMP/doctor
   DOCTOR_PROJECT=$DOCTOR_BASE/project
-  mkdir -p "$DOCTOR_PROJECT/input" || return 70
+  DOCTOR_CONFIG_ROOT=$DOCTOR_BASE/config
+  mkdir -p "$DOCTOR_PROJECT/input" "$DOCTOR_CONFIG_ROOT" || return 70
   cp "$SOURCE_ROOT/README.md" "$DOCTOR_PROJECT/input/README.md" || return 70
+  cp -R "$SOURCE_ROOT/output/." "$DOCTOR_CONFIG_ROOT/" || return 70
 
   CASE_TOTAL=$((CASE_TOTAL + 1))
   assert_file doctor.cli_regular "$DOCTOR_CLI" || true
@@ -22,13 +25,17 @@ doctor_run() {
   fi
 
   set +e
-  "$DOCTOR_CLI" help >"$DOCTOR_BASE/help.out" 2>"$DOCTOR_BASE/help.err"
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT "$DOCTOR_CLI" help \
+    >"$DOCTOR_BASE/help.out" 2>"$DOCTOR_BASE/help.err"
   DOCTOR_HELP_RC=$?
-  "$DOCTOR_CLI" unknown >"$DOCTOR_BASE/usage.out" 2>"$DOCTOR_BASE/usage.err"
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT "$DOCTOR_CLI" unknown \
+    >"$DOCTOR_BASE/usage.out" 2>"$DOCTOR_BASE/usage.err"
   DOCTOR_USAGE_RC=$?
-  "$DOCTOR_CLI" doctor tools >"$DOCTOR_BASE/tools.out" 2>"$DOCTOR_BASE/tools.err"
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT "$DOCTOR_CLI" doctor tools \
+    >"$DOCTOR_BASE/tools.out" 2>"$DOCTOR_BASE/tools.err"
   DOCTOR_TOOLS_RC=$?
-  "$DOCTOR_CLI" doctor models >"$DOCTOR_BASE/models.out" 2>"$DOCTOR_BASE/models.err"
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT "$DOCTOR_CLI" doctor models \
+    >"$DOCTOR_BASE/models.out" 2>"$DOCTOR_BASE/models.err"
   DOCTOR_MODELS_RC=$?
   evidence_log_command doctor-help './bin/sensai help' "$DOCTOR_HELP_RC"
   evidence_log_command doctor-usage './bin/sensai unknown' "$DOCTOR_USAGE_RC"
@@ -79,13 +86,14 @@ doctor_run() {
     assert_record doctor.no_secret_output 1 'doctor 출력에 자격증명 단서가 있다' || true
   fi
 
-  DOCTOR_ALIAS_ROOT=$DOCTOR_BASE/alias-source
-  doctor_clone_runtime "$DOCTOR_ALIAS_ROOT" || return 70
+  DOCTOR_ALIAS_ROOT=$DOCTOR_BASE/alias-config
+  mkdir -p "$DOCTOR_ALIAS_ROOT" || return 70
+  cp -R "$SOURCE_ROOT/output/." "$DOCTOR_ALIAS_ROOT/" || return 70
   jq '.model_aliases.lead="zai/wrong-model"' \
-    "$DOCTOR_ALIAS_ROOT/output/toolchain.lock.json" >"$DOCTOR_ALIAS_ROOT/output/toolchain.next.json" || return 70
-  mv "$DOCTOR_ALIAS_ROOT/output/toolchain.next.json" "$DOCTOR_ALIAS_ROOT/output/toolchain.lock.json" || return 70
+    "$DOCTOR_ALIAS_ROOT/toolchain.lock.json" >"$DOCTOR_ALIAS_ROOT/toolchain.next.json" || return 70
+  mv "$DOCTOR_ALIAS_ROOT/toolchain.next.json" "$DOCTOR_ALIAS_ROOT/toolchain.lock.json" || return 70
   set +e
-  "$DOCTOR_ALIAS_ROOT/bin/sensai" doctor models \
+  OPENCODE_CONFIG_DIR=$DOCTOR_ALIAS_ROOT "$DOCTOR_CLI" doctor models \
     >"$DOCTOR_BASE/alias.out" 2>"$DOCTOR_BASE/alias.err"
   DOCTOR_ALIAS_RC=$?
   evidence_log_command doctor-wrong-alias './bin/sensai doctor models <wrong-alias>' "$DOCTOR_ALIAS_RC"
@@ -96,13 +104,14 @@ doctor_run() {
     assert_record doctor.alias_reason 1 'alias 불일치 reason code가 없다' || true
   fi
 
-  DOCTOR_TRANSPORT_ROOT=$DOCTOR_BASE/transport-source
-  doctor_clone_runtime "$DOCTOR_TRANSPORT_ROOT" || return 70
+  DOCTOR_TRANSPORT_ROOT=$DOCTOR_BASE/transport-config
+  mkdir -p "$DOCTOR_TRANSPORT_ROOT" || return 70
+  cp -R "$SOURCE_ROOT/output/." "$DOCTOR_TRANSPORT_ROOT/" || return 70
   jq '.provider["sensai-ollama"].options.baseURL="https://remote.example.invalid/v1"' \
-    "$DOCTOR_TRANSPORT_ROOT/output/opencode.json" >"$DOCTOR_TRANSPORT_ROOT/output/opencode.next.json" || return 70
-  mv "$DOCTOR_TRANSPORT_ROOT/output/opencode.next.json" "$DOCTOR_TRANSPORT_ROOT/output/opencode.json" || return 70
+    "$DOCTOR_TRANSPORT_ROOT/opencode.json" >"$DOCTOR_TRANSPORT_ROOT/opencode.next.json" || return 70
+  mv "$DOCTOR_TRANSPORT_ROOT/opencode.next.json" "$DOCTOR_TRANSPORT_ROOT/opencode.json" || return 70
   set +e
-  "$DOCTOR_TRANSPORT_ROOT/bin/sensai" doctor models \
+  OPENCODE_CONFIG_DIR=$DOCTOR_TRANSPORT_ROOT "$DOCTOR_CLI" doctor models \
     >"$DOCTOR_BASE/transport.out" 2>"$DOCTOR_BASE/transport.err"
   DOCTOR_TRANSPORT_RC=$?
   evidence_log_command doctor-wrong-transport './bin/sensai doctor models <wrong-transport>' "$DOCTOR_TRANSPORT_RC"
@@ -121,10 +130,12 @@ doctor_run() {
 
   CASE_TOTAL=$((CASE_TOTAL + 1))
   set +e
-  SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT "$DOCTOR_CLI" mission init fixture-mission input '결정적 테스트 목표' \
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT \
+    "$DOCTOR_CLI" mission init fixture-mission input '결정적 테스트 목표' \
     >"$DOCTOR_BASE/init.out" 2>"$DOCTOR_BASE/init.err"
   DOCTOR_INIT_RC=$?
-  SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT "$DOCTOR_CLI" mission status fixture-mission \
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT \
+    "$DOCTOR_CLI" mission status fixture-mission \
     >"$DOCTOR_BASE/status.out" 2>"$DOCTOR_BASE/status.err"
   DOCTOR_STATUS_RC=$?
   evidence_log_command mission-init './bin/sensai mission init fixture-mission input <goal>' "$DOCTOR_INIT_RC"
@@ -155,7 +166,8 @@ doctor_run() {
   tooling_sha256_file "$DOCTOR_MISSION/progress.json" || return 70
   DOCTOR_REV1_HASH=$TOOLING_SHA256
   set +e
-  SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT "$DOCTOR_CLI" mission resume fixture-mission 1 "$DOCTOR_REV1_HASH" \
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT \
+    "$DOCTOR_CLI" mission resume fixture-mission 1 "$DOCTOR_REV1_HASH" \
     >"$DOCTOR_BASE/resume.out" 2>"$DOCTOR_BASE/resume.err"
   DOCTOR_RESUME_RC=$?
   evidence_log_command mission-resume './bin/sensai mission resume fixture-mission 1 <sha256>' "$DOCTOR_RESUME_RC"
@@ -172,7 +184,8 @@ doctor_run() {
   tooling_sha256_file "$DOCTOR_MISSION/progress.json" || return 70
   DOCTOR_REV2_HASH=$TOOLING_SHA256
   set +e
-  SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT "$DOCTOR_CLI" mission resume fixture-mission 1 "$DOCTOR_REV1_HASH" \
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT \
+    "$DOCTOR_CLI" mission resume fixture-mission 1 "$DOCTOR_REV1_HASH" \
     >"$DOCTOR_BASE/stale.out" 2>"$DOCTOR_BASE/stale.err"
   DOCTOR_STALE_RC=$?
   evidence_log_command mission-resume-stale './bin/sensai mission resume fixture-mission 1 <stale-sha256>' "$DOCTOR_STALE_RC"
@@ -192,7 +205,8 @@ doctor_run() {
     | .next="F0 승인 영수증을 기다린다"
   ' "$DOCTOR_MISSION/progress.json" >"$DOCTOR_PROJECT/checkpoint.json" || return 70
   set +e
-  SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT "$DOCTOR_CLI" mission checkpoint fixture-mission checkpoint.json 2 "$DOCTOR_REV2_HASH" \
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT \
+    "$DOCTOR_CLI" mission checkpoint fixture-mission checkpoint.json 2 "$DOCTOR_REV2_HASH" \
     >"$DOCTOR_BASE/checkpoint.out" 2>"$DOCTOR_BASE/checkpoint.err"
   DOCTOR_CHECKPOINT_RC=$?
   evidence_log_command mission-checkpoint './bin/sensai mission checkpoint fixture-mission checkpoint.json 2 <sha256>' "$DOCTOR_CHECKPOINT_RC"
@@ -206,7 +220,8 @@ doctor_run() {
   fi
 
   set +e
-  SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT "$DOCTOR_CLI" mission init '../escape' input '실행되면 안 되는 목표' \
+  OPENCODE_CONFIG_DIR=$DOCTOR_CONFIG_ROOT SENSAI_PROJECT_ROOT=$DOCTOR_PROJECT \
+    "$DOCTOR_CLI" mission init '../escape' input '실행되면 안 되는 목표' \
     >"$DOCTOR_BASE/path.out" 2>"$DOCTOR_BASE/path.err"
   DOCTOR_PATH_RC=$?
   evidence_log_command mission-invalid-path './bin/sensai mission init ../escape input <goal>' "$DOCTOR_PATH_RC"
@@ -217,25 +232,7 @@ doctor_run() {
     assert_record doctor.invalid_path_no_write 1 '잘못된 mission ID가 외부 파일을 썼다' || true
   fi
 
-  DOCTOR_COMMAND_BINDINGS=$DOCTOR_BASE/command-bindings.txt
-  DOCTOR_EXPECTED_BINDINGS=$DOCTOR_BASE/expected-command-bindings.txt
-  rg -o --no-filename --no-config '`[^`]*sensai[^`]* mission (init|checkpoint|resume|status)[^`]*`' \
-    "$SOURCE_ROOT/output/commands/sensai/run.md" \
-    "$SOURCE_ROOT/output/commands/sensai/resume.md" \
-    "$SOURCE_ROOT/output/commands/sensai/status.md" | LC_ALL=C sort \
-    >"$DOCTOR_COMMAND_BINDINGS" || return 70
-  printf '%s\n' \
-    '`"$HOME/.local/bin/sensai" mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>`' \
-    '`"$HOME/.local/bin/sensai" mission init <mission-id> <target-relative-path> <goal>`' \
-    '`"$HOME/.local/bin/sensai" mission resume <mission-id> [<expected-revision> <expected-sha256>]`' \
-    '`"$HOME/.local/bin/sensai" mission status <mission-id>`' \
-    >"$DOCTOR_EXPECTED_BINDINGS" || return 70
-  if cmp -s "$DOCTOR_EXPECTED_BINDINGS" "$DOCTOR_COMMAND_BINDINGS" && \
-     ! rg -q --no-config '\$OPENCODE_CONFIG_DIR[^[:space:]]*sensai|(^|[^A-Z_])\./bin/sensai mission' "$SOURCE_ROOT/output/commands/sensai"; then
-    assert_record doctor.command_binding 0 'run/resume/status command가 설치된 결정적 mission helper에 결합됐다' || true
-  else
-    assert_record doctor.command_binding 1 'command와 mission helper 결합이 빠졌다' || true
-  fi
+  doctor_assert_command_binding || return 70
 }
 
 doctor_clone_runtime() {

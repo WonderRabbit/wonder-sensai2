@@ -10,15 +10,17 @@ subtask: false
 
 파일 기반 `CAS`와 원자적 `revision` 증가는 `"$HOME/.local/bin/sensai" mission resume <mission-id> [<expected-revision> <expected-sha256>]`으로 수행한다. `HOME`이 비어 있거나 절대 경로가 아니면 중단한다. 정확한 `"$HOME/.local/bin/sensai"`가 정규 실행 파일이 아니거나 `CLI`가 설치된 `runtime root`를 검증하지 못하면 중단한다. `CLI`의 `JSON projection`만 `todo` 복원 입력으로 사용하며 `exit` `65`, `69`, `75`를 모델 판단으로 성공 처리하지 않는다.
 
+미션에 필요한 schema와 recipe의 경로를 모델이 직접 조립하거나 읽어 검증하지 마라. 설치된 `CLI`가 각 파일을 대상 프로젝트의 `.sensai/{schemas,recipes}`에서 먼저 선택하고, 해당 project file이 없을 때만 전역 OpenCode config의 같은 파일로 fallback한다. project file이 존재하지만 invalid이면 전역 파일로 우회하지 않고 fail closed한다. 모델은 이 선택과 검증을 다시 구현하지 말고 성공한 `mission resume`의 JSON projection만 후속 판단과 `todo` 복원에 사용한다.
+
 ## 읽기와 검증 순서
 
 재개 전에 아래 순서를 바꾸지 마라.
 
 1. 물리 파일인 `trace.json`과 `progress.json`을 읽고 각각의 `SHA-256`, `progress` `revision`, 현재 `git HEAD`, `inputs`와 `toolchain` 지문을 계산한다.
-2. `progress schema`와 `output/recipes/progress.jq` `validate` 모드로 문서 구조를 검증한다. JSON 손상, 필수 필드 누락, 다른 `mission_id` 또는 미션 경로는 `progress.resume.corrupt`로 중단한다.
+2. 설치된 `CLI`가 선택한 progress schema와 recipe의 `validate` 결과로 문서 구조를 검증한다. JSON 손상, 필수 필드 누락, 다른 `mission_id` 또는 미션 경로는 `progress.resume.corrupt`로 중단한다.
 3. 같은 미션의 전용 재개 잠금을 원자적으로 획득한다. 이미 잠겼으면 `progress.resume.concurrent`로 거부하고 잠금을 훔치거나 제거하지 않는다.
 4. 잠금에 `mission_id`, 소유자, 기준 `revision`, 기준 `progress` `SHA-256`을 기록하고 다시 읽은 정규 `progress`와 `exact` 비교한다.
-5. `progress.jq` `resume` 모드로 저장된 `trace`·`inputs`·`git_head`·`toolchain` 지문과 관찰값, 기대 `revision`, 기준 `progress` 해시와 잠금 소유권을 검증한다.
+5. 설치된 `CLI`가 선택한 recipe의 `resume` 검증 결과로 저장된 `trace`·`inputs`·`git_head`·`toolchain` 지문과 관찰값, 기대 `revision`, 기준 `progress` 해시와 잠금 소유권을 확인한다.
 
 `progress` 해시가 달라졌으면 `progress.resume.stale_hash`, `revision`이 달라졌으면 `progress.resume.stale_revision`, 잠금의 기준 `revision` 또는 해시가 다르면 `progress.resume.double_resume`, `trace`와 입력 지문이 다르면 각각 `progress.resume.precondition_trace`, `progress.resume.precondition_inputs`로 중단한다. 손상 복구를 이유로 추정한 값을 정규 `progress`에 쓰지 말고, `trace.json`에서 재기준선 후보를 만드는 별도 사람 결정을 요청한다.
 
@@ -28,7 +30,7 @@ subtask: false
 
 - 후보는 현재 `phase`와 `status`를 임의로 전진시키지 않고, 이전 `revision + 1`과 이전 `progress` `SHA-256`을 `precondition_fingerprints.previous_progress`에 기록한다.
 - 현재 관찰한 `trace`·`inputs`·`git_head`·`toolchain` 지문과 `UTC` 시각을 후보에 기록한다.
-- `progress.jq` `transition` 모드와 `progress schema`가 모두 성공한 뒤 같은 미션 디렉터리의 임시 파일을 원자적 `rename`하여 `progress.json`을 한 번만 교체한다.
+- 설치된 `CLI`가 선택한 recipe의 `transition` 검증과 progress schema 검증을 모두 통과한 뒤 같은 미션 디렉터리의 임시 파일을 원자적 `rename`하여 `progress.json`을 한 번만 교체한 결과만 인정한다.
 - 먼저 재개한 세션이 revision을 올리므로 같은 기준을 가진 두 번째 재개는 `progress.resume.stale_hash`, `progress.resume.stale_revision` 또는 `progress.resume.double_resume`로 실패해야 한다.
 
 부분 후보, 임시 파일과 실패한 상태를 정규 `progress`로 사용하지 않는다. 완료된 `F5` 미션은 재개하지 않고 `/sensai/status`로 최종 상태만 읽는다.
@@ -37,8 +39,8 @@ subtask: false
 
 원자적 `progress` 교체 뒤 진실 우선순위 `trace.json` > `progress.json` > `status.md` > `todo`를 적용한다.
 
-1. 새 정규 progress를 `progress.jq` `status` 모드에 입력해 `status.md`를 재생성한다. 사람이 작성한 별도 상태 문장을 합치지 않는다.
-2. `progress.jq` `resume` 모드가 반환한 `todo_snapshot`과 현재 `phase`를 사용해 세션 `todo`를 복원한다.
+1. 설치된 `CLI`가 새 정규 progress에서 재생성한 검증된 `status.md`를 사용한다. 사람이 작성한 별도 상태 문장을 합치지 않는다.
+2. 성공한 `mission resume`의 JSON projection에 포함된 `todo_snapshot`, `phase`, `todo`만 사용해 세션 `todo`를 복원한다.
 3. 이미 검증된 이전 단계는 `completed`, 정확한 다음 작업 하나만 `in_progress`, 나머지는 `pending`으로 둔다.
 
 OpenCode 내장 `todo`에 `blocked` 상태를 발명하지 마라. 막힘은 `progress.json`의 `blocked[]`와 `todo` 항목 설명에 보존한다. `todo`가 소실되거나 `status`가 오래되어도 이를 원장과 `progress`보다 우선하지 않는다.
