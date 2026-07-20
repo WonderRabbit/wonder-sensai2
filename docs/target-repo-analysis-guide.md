@@ -181,6 +181,8 @@ target에 `opencode.json`, `opencode.jsonc`, `.opencode/`, `AGENTS.md`, `CLAUDE.
 
 `/sensai/run`, `/sensai/status`, `/sensai/resume`의 deterministic CLI binding은 `$HOME/.local/bin/sensai`를 사용한다. target의 `./bin/sensai`나 config-local CLI를 요구하지 않는다. live F0/F3/F5 승인은 current fingerprint에 결합된 human receipt가 있어야 하며 모델이 verdict를 발명할 수 없다.
 
+실제 대상 저장소를 열기 전에는 [대상 저장소 preflight와 운영](target-repo-preflight-and-operations.md)의 physical path, secret-like path, OpenCode merge surface, Git 기준선 검사를 먼저 수행한다. 같은 문서는 F0-F5 승인 영수증, 실패 복구와 global 설치 퇴역 경계도 정의한다.
+
 ## 실패 reason과 대응
 
 | reason | 의미 | 대응 |
@@ -214,6 +216,7 @@ exit code는 `0` 성공, `64` usage, `65` data/config, `69` tool/transport unava
 ## 관련 계약
 
 - [제품 계약](PROD.md)
+- [대상 저장소 preflight와 운영](target-repo-preflight-and-operations.md)
 - [runtime 계약](harness/runtime-contract.md)
 - [검증 계약](harness/verification-contract.md)
 - [release 계약](harness/release-contract.md)
