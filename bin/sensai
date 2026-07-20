@@ -1,4 +1,5 @@
 #!/bin/sh
+# noqa: SIZE_OK - source checkout과 installed `$HOME/.local/bin/sensai`가 같은 single-file POSIX CLI로 실행되며 runtime resolver, packaging transaction, mission command를 self-contained로 제공해야 하므로 분할하지 않는다.
 
 set -u
 
@@ -8,13 +9,146 @@ EX_UNAVAILABLE=69
 EX_CANTCREAT=73
 EX_TEMPFAIL=75
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) || exit "$EX_UNAVAILABLE"
-SOURCE_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P) || exit "$EX_UNAVAILABLE"
-if test -d "$SOURCE_ROOT/output" && ! test -L "$SOURCE_ROOT/output"; then
-  RUNTIME_ROOT=$SOURCE_ROOT/output
-else
-  RUNTIME_ROOT=$SOURCE_ROOT
-fi
+fail() {
+  FAIL_EXIT=$1
+  FAIL_REASON=$2
+  FAIL_DETAIL=$3
+  printf '오류 reason=%s detail=%s\n' "$FAIL_REASON" "$FAIL_DETAIL" >&2
+  exit "$FAIL_EXIT"
+}
+
+runtime_path_normalized() {
+  case "$1" in
+    /*) ;;
+    *) return 1 ;;
+  esac
+  case "$1" in
+    /) ;;
+    *//*|*/./*|*/../*|*/.|*/..|*/|*"
+"*|*"	"*) return 1 ;;
+  esac
+}
+
+path_existing_components_physical() {
+  RUNTIME_CHECK_PATH=$1
+  case "$RUNTIME_CHECK_PATH" in
+    /*) ;;
+    *) return 1 ;;
+  esac
+  RUNTIME_CHECK_CURRENT=/
+  RUNTIME_CHECK_RELATIVE=${RUNTIME_CHECK_PATH#/}
+  RUNTIME_CHECK_OLD_IFS=$IFS
+  IFS=/
+  set -f
+  set -- $RUNTIME_CHECK_RELATIVE
+  set +f
+  IFS=$RUNTIME_CHECK_OLD_IFS
+  for RUNTIME_CHECK_COMPONENT do
+    case "$RUNTIME_CHECK_COMPONENT" in
+      ''|.) continue ;;
+      ..) return 1 ;;
+    esac
+    if test "$RUNTIME_CHECK_CURRENT" = /; then
+      RUNTIME_CHECK_CURRENT=/$RUNTIME_CHECK_COMPONENT
+    else
+      RUNTIME_CHECK_CURRENT=$RUNTIME_CHECK_CURRENT/$RUNTIME_CHECK_COMPONENT
+    fi
+    test ! -L "$RUNTIME_CHECK_CURRENT" || return 1
+  done
+}
+
+runtime_resolve_executable() {
+  EXECUTABLE_REQUEST=$0
+  case "$EXECUTABLE_REQUEST" in
+    */*) ;;
+    *)
+      EXECUTABLE_REQUEST=$(command -v -- "$EXECUTABLE_REQUEST" 2>/dev/null) || \
+        fail "$EX_DATAERR" runtime.executable_invalid path_lookup_failed
+      runtime_path_normalized "$EXECUTABLE_REQUEST" || \
+        fail "$EX_DATAERR" runtime.executable_invalid path_lookup_not_absolute
+      ;;
+  esac
+  case "$EXECUTABLE_REQUEST" in
+    /*) ;;
+    *)
+      EXECUTABLE_CWD=$(pwd -P 2>/dev/null) || \
+        fail "$EX_DATAERR" runtime.executable_invalid cwd_unresolved
+      EXECUTABLE_REQUEST=$EXECUTABLE_CWD/$EXECUTABLE_REQUEST
+      ;;
+  esac
+  test ! -L "$EXECUTABLE_REQUEST" || \
+    fail "$EX_DATAERR" runtime.executable_invalid executable_symlink
+  EXECUTABLE_DIR_REQUEST=$(dirname -- "$EXECUTABLE_REQUEST" 2>/dev/null) || \
+    fail "$EX_DATAERR" runtime.executable_invalid dirname_failed
+  path_existing_components_physical "$EXECUTABLE_DIR_REQUEST" || \
+    fail "$EX_DATAERR" runtime.executable_invalid parent_symlink
+  EXECUTABLE_DIR=$(CDPATH= cd -- "$EXECUTABLE_DIR_REQUEST" 2>/dev/null && pwd -P) || \
+    fail "$EX_DATAERR" runtime.executable_invalid parent_unresolved
+  EXECUTABLE_BASE=$(basename -- "$EXECUTABLE_REQUEST" 2>/dev/null) || \
+    fail "$EX_DATAERR" runtime.executable_invalid basename_failed
+  case "$EXECUTABLE_BASE" in
+    ''|.|..) fail "$EX_DATAERR" runtime.executable_invalid basename_invalid ;;
+  esac
+  EXECUTABLE_PATH=$EXECUTABLE_DIR/$EXECUTABLE_BASE
+  runtime_path_normalized "$EXECUTABLE_PATH" || \
+    fail "$EX_DATAERR" runtime.executable_invalid path_not_normalized
+  test -f "$EXECUTABLE_PATH" && test -x "$EXECUTABLE_PATH" && ! test -L "$EXECUTABLE_PATH" || \
+    fail "$EX_DATAERR" runtime.executable_invalid not_regular_executable
+}
+
+runtime_config_candidate() {
+  if test -n "${OPENCODE_CONFIG_DIR:-}"; then
+    GLOBAL_CONFIG_ROOT=$OPENCODE_CONFIG_DIR
+  elif test -n "${XDG_CONFIG_HOME:-}"; then
+    GLOBAL_CONFIG_ROOT=$XDG_CONFIG_HOME/opencode
+  else
+    test -n "${HOME:-}" || fail "$EX_DATAERR" runtime.asset_invalid home
+    GLOBAL_CONFIG_ROOT=${HOME:-}/.config/opencode
+  fi
+  runtime_path_normalized "$GLOBAL_CONFIG_ROOT" || \
+    fail "$EX_DATAERR" runtime.asset_invalid config_root_not_absolute
+  path_existing_components_physical "$GLOBAL_CONFIG_ROOT" || \
+    fail "$EX_DATAERR" runtime.asset_invalid config_root_symlink
+  if test -e "$GLOBAL_CONFIG_ROOT"; then
+    test -d "$GLOBAL_CONFIG_ROOT" && ! test -L "$GLOBAL_CONFIG_ROOT" || \
+      fail "$EX_DATAERR" runtime.asset_invalid config_root_not_directory
+    RUNTIME_PHYSICAL=$(CDPATH= cd -- "$GLOBAL_CONFIG_ROOT" 2>/dev/null && pwd -P) || \
+      fail "$EX_DATAERR" runtime.asset_invalid config_root_unresolved
+    test "$RUNTIME_PHYSICAL" = "$GLOBAL_CONFIG_ROOT" || \
+      fail "$EX_DATAERR" runtime.asset_invalid config_root_not_physical
+  fi
+}
+
+runtime_resolve_layout() {
+  RUNTIME_MODE=''
+  if runtime_path_normalized "${HOME:-}" && path_existing_components_physical "$HOME" && \
+     test "$EXECUTABLE_PATH" = "$HOME/.local/bin/sensai"; then
+    RUNTIME_MODE=installed
+    return
+  fi
+  test "$EXECUTABLE_BASE" = sensai || \
+    fail "$EX_DATAERR" runtime.executable_invalid unknown_location
+  test "$(basename -- "$EXECUTABLE_DIR")" = bin || \
+    fail "$EX_DATAERR" runtime.executable_invalid unknown_location
+  PACKAGE_SOURCE_ROOT=$(CDPATH= cd -- "$EXECUTABLE_DIR/.." 2>/dev/null && pwd -P) || \
+    fail "$EX_DATAERR" runtime.executable_invalid source_root_unresolved
+  test "$EXECUTABLE_PATH" = "$PACKAGE_SOURCE_ROOT/bin/sensai" || \
+    fail "$EX_DATAERR" runtime.executable_invalid source_executable_mismatch
+  RUNTIME_MODE=source
+}
+
+package_resolve_source_layout() {
+  test -f "$PACKAGE_SOURCE_ROOT/manifest.txt" && ! test -L "$PACKAGE_SOURCE_ROOT/manifest.txt" || \
+    fail "$EX_DATAERR" runtime.executable_invalid source_manifest_invalid
+  SOURCE_PAYLOAD_ROOT=$PACKAGE_SOURCE_ROOT/output
+  test -d "$SOURCE_PAYLOAD_ROOT" && ! test -L "$SOURCE_PAYLOAD_ROOT" || \
+    fail "$EX_DATAERR" runtime.executable_invalid source_payload_invalid
+  path_existing_components_physical "$SOURCE_PAYLOAD_ROOT" || \
+    fail "$EX_DATAERR" runtime.executable_invalid source_payload_symlink
+}
+
+runtime_resolve_executable
+runtime_resolve_layout
 PROJECT_REQUEST=${SENSAI_PROJECT_ROOT:-$(pwd -P)}
 
 usage() {
@@ -24,7 +158,7 @@ usage() {
   ./bin/sensai doctor tools
   ./bin/sensai doctor models
   ./bin/sensai stage <absent-absolute-target>
-  ./bin/sensai install <absent-absolute-target>
+  ./bin/sensai install
   ./bin/sensai mission init <mission-id> <target-relative-path> <goal>
   ./bin/sensai mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>
   ./bin/sensai mission status <mission-id>
@@ -35,23 +169,118 @@ usage() {
   64  사용법 오류
   65  입력·설정·제품 식별 오류
   69  필수 도구 또는 transport 사용 불가
-  73  stage·install 대상이 이미 존재하거나 생성할 수 없음
+  73  stage 대상 생성 불가 또는 install managed 충돌
   75  잠금·revision·hash 충돌로 나중에 다시 시도해야 함
 
 이 CLI는 도구를 설치하거나 자격증명을 읽거나 모델을 호출하지 않는다.
 EOF
 }
 
-fail() {
-  FAIL_EXIT=$1
-  FAIL_REASON=$2
-  FAIL_DETAIL=$3
-  printf '오류 reason=%s detail=%s\n' "$FAIL_REASON" "$FAIL_DETAIL" >&2
-  exit "$FAIL_EXIT"
-}
-
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$EX_UNAVAILABLE" tool.unavailable "$1"
+}
+
+runtime_asset_regular() {
+  RUNTIME_ASSET_ROOT=$1
+  RUNTIME_ASSET_RELATIVE=$2
+  RUNTIME_ASSET_OPTIONAL=$3
+  RUNTIME_ASSET_PRESENT=0
+  test ! -L "$RUNTIME_ASSET_ROOT" || \
+    fail "$EX_DATAERR" runtime.asset_invalid "$RUNTIME_ASSET_RELATIVE"
+  if ! test -e "$RUNTIME_ASSET_ROOT"; then
+    test "$RUNTIME_ASSET_OPTIONAL" -eq 1 && return 0
+    fail "$EX_DATAERR" runtime.asset_missing "$RUNTIME_ASSET_RELATIVE"
+  fi
+  test -d "$RUNTIME_ASSET_ROOT" || \
+    fail "$EX_DATAERR" runtime.asset_invalid "$RUNTIME_ASSET_RELATIVE"
+  RUNTIME_ASSET_CURRENT=$RUNTIME_ASSET_ROOT
+  RUNTIME_ASSET_OLD_IFS=$IFS
+  IFS=/
+  set -f
+  set -- $RUNTIME_ASSET_RELATIVE
+  set +f
+  IFS=$RUNTIME_ASSET_OLD_IFS
+  test "$#" -gt 0 || fail "$EX_DATAERR" runtime.asset_invalid empty_asset_path
+  while test "$#" -gt 0; do
+    RUNTIME_ASSET_COMPONENT=$1
+    shift
+    case "$RUNTIME_ASSET_COMPONENT" in
+      ''|.|..) fail "$EX_DATAERR" runtime.asset_invalid unsafe_asset_path ;;
+    esac
+    RUNTIME_ASSET_CURRENT=$RUNTIME_ASSET_CURRENT/$RUNTIME_ASSET_COMPONENT
+    test ! -L "$RUNTIME_ASSET_CURRENT" || \
+      fail "$EX_DATAERR" runtime.asset_invalid "$RUNTIME_ASSET_RELATIVE"
+    if ! test -e "$RUNTIME_ASSET_CURRENT"; then
+      test "$RUNTIME_ASSET_OPTIONAL" -eq 1 && return 0
+      fail "$EX_DATAERR" runtime.asset_missing "$RUNTIME_ASSET_RELATIVE"
+    fi
+    if test "$#" -gt 0; then
+      test -d "$RUNTIME_ASSET_CURRENT" || \
+        fail "$EX_DATAERR" runtime.asset_invalid "$RUNTIME_ASSET_RELATIVE"
+    else
+      test -f "$RUNTIME_ASSET_CURRENT" || \
+        fail "$EX_DATAERR" runtime.asset_invalid "$RUNTIME_ASSET_RELATIVE"
+    fi
+  done
+  RUNTIME_ASSET_PATH=$RUNTIME_ASSET_CURRENT
+  RUNTIME_ASSET_PRESENT=1
+}
+
+runtime_require_json_path() {
+  jq empty "$1" >/dev/null 2>&1 || \
+    fail "$EX_DATAERR" runtime.asset_invalid "$2"
+}
+
+runtime_require_recipe_path() {
+  jq -n -f "$1" >/dev/null 2>&1
+  RUNTIME_RECIPE_RC=$?
+  case "$RUNTIME_RECIPE_RC" in
+    0|1|4|5) ;;
+    *) fail "$EX_DATAERR" runtime.asset_invalid "$2" ;;
+  esac
+}
+
+runtime_resolve_global_assets() {
+  runtime_config_candidate
+  runtime_asset_regular "$GLOBAL_CONFIG_ROOT" opencode.json 0
+  OPENCODE_CONFIG_PATH=$RUNTIME_ASSET_PATH
+  runtime_require_json_path "$OPENCODE_CONFIG_PATH" opencode.json
+  runtime_asset_regular "$GLOBAL_CONFIG_ROOT" toolchain.lock.json 0
+  TOOLCHAIN_LOCK_PATH=$RUNTIME_ASSET_PATH
+  runtime_require_json_path "$TOOLCHAIN_LOCK_PATH" toolchain.lock.json
+}
+
+runtime_resolve_overlay_asset() {
+  RUNTIME_OVERLAY_RELATIVE=$1
+  runtime_asset_regular "$PROJECT_SENSAI_ROOT" "$RUNTIME_OVERLAY_RELATIVE" 1
+  if test "$RUNTIME_ASSET_PRESENT" -eq 1; then
+    RUNTIME_RESOLVED_PATH=$RUNTIME_ASSET_PATH
+    RUNTIME_RESOLVED_PROVENANCE=project
+  else
+    runtime_asset_regular "$GLOBAL_CONFIG_ROOT" "$RUNTIME_OVERLAY_RELATIVE" 0
+    RUNTIME_RESOLVED_PATH=$RUNTIME_ASSET_PATH
+    RUNTIME_RESOLVED_PROVENANCE=global
+  fi
+}
+
+runtime_resolve_mission_assets() {
+  runtime_resolve_global_assets
+  runtime_resolve_overlay_asset schemas/trace.schema.json
+  TRACE_SCHEMA_PATH=$RUNTIME_RESOLVED_PATH
+  TRACE_SCHEMA_PROVENANCE=$RUNTIME_RESOLVED_PROVENANCE
+  runtime_require_json_path "$TRACE_SCHEMA_PATH" schemas/trace.schema.json
+  runtime_resolve_overlay_asset schemas/progress.schema.json
+  PROGRESS_SCHEMA_PATH=$RUNTIME_RESOLVED_PATH
+  PROGRESS_SCHEMA_PROVENANCE=$RUNTIME_RESOLVED_PROVENANCE
+  runtime_require_json_path "$PROGRESS_SCHEMA_PATH" schemas/progress.schema.json
+  runtime_resolve_overlay_asset recipes/trace.jq
+  TRACE_RECIPE_PATH=$RUNTIME_RESOLVED_PATH
+  TRACE_RECIPE_PROVENANCE=$RUNTIME_RESOLVED_PROVENANCE
+  runtime_require_recipe_path "$TRACE_RECIPE_PATH" recipes/trace.jq
+  runtime_resolve_overlay_asset recipes/progress.jq
+  PROGRESS_RECIPE_PATH=$RUNTIME_RESOLVED_PATH
+  PROGRESS_RECIPE_PROVENANCE=$RUNTIME_RESOLVED_PROVENANCE
+  runtime_require_recipe_path "$PROGRESS_RECIPE_PATH" recipes/progress.jq
 }
 
 resolve_project_root() {
@@ -66,6 +295,7 @@ resolve_project_root() {
   case "$PROJECT_ROOT" in
     /|'') fail "$EX_DATAERR" mission.project_root_invalid unsafe_root ;;
   esac
+  PROJECT_SENSAI_ROOT=$PROJECT_ROOT/.sensai
 }
 
 sha256_file() {
@@ -79,51 +309,81 @@ sha256_file() {
 
 package_cleanup() {
   PACKAGE_CLEANUP_EXIT=$?
-  if test -n "${PACKAGE_WORK:-}" && test -d "$PACKAGE_WORK" && ! test -L "$PACKAGE_WORK"; then
+  trap - EXIT HUP INT TERM
+  PACKAGE_CLEANUP_FAILED=0
+  if test "${PACKAGE_WORK_OWNED:-0}" -eq 1; then
     case "$PACKAGE_WORK" in
       "${PACKAGE_PARENT:-}/.sensai-package."*)
-        rm -rf "$PACKAGE_WORK" 2>/dev/null || true
+        if test -d "$PACKAGE_WORK" && ! test -L "$PACKAGE_WORK" &&
+           rm -rf "$PACKAGE_WORK" 2>/dev/null; then
+          PACKAGE_WORK_OWNED=0
+          PACKAGE_WORK=''
+        else
+          PACKAGE_CLEANUP_FAILED=1
+        fi
         ;;
+      *) PACKAGE_CLEANUP_FAILED=1 ;;
     esac
   fi
-  if test "${PACKAGE_LOCK_OWNED:-0}" -eq 1 && \
-     test -n "${PACKAGE_LOCK:-}" && test -d "$PACKAGE_LOCK" && ! test -L "$PACKAGE_LOCK"; then
+  if test "${PACKAGE_LOCK_OWNED:-0}" -eq 1; then
     case "$PACKAGE_LOCK" in
       "${PACKAGE_PARENT:-}/.sensai-package-lock."*)
-        rmdir "$PACKAGE_LOCK" 2>/dev/null || true
+        if test -d "$PACKAGE_LOCK" && ! test -L "$PACKAGE_LOCK" &&
+           rmdir "$PACKAGE_LOCK" 2>/dev/null; then
+          PACKAGE_LOCK_OWNED=0
+          PACKAGE_LOCK=''
+        else
+          PACKAGE_CLEANUP_FAILED=1
+        fi
         ;;
+      *) PACKAGE_CLEANUP_FAILED=1 ;;
     esac
+  fi
+  if test "$PACKAGE_CLEANUP_FAILED" -ne 0; then
+    if test "${PACKAGE_CLEANUP_FAILURE_REPORTED:-0}" -ne 1; then
+      printf '%s\n' '오류 reason=package.rollback_failed detail=owned_state_mismatch' >&2
+    fi
+    exit "$EX_TEMPFAIL"
   fi
   return "$PACKAGE_CLEANUP_EXIT"
 }
 
-package_no_symlink_components() {
-  PACKAGE_CHECK_PATH=$1
-  case "$PACKAGE_CHECK_PATH" in
-    /*) ;;
-    *) return 1 ;;
-  esac
-  PACKAGE_CHECK_CURRENT=/
-  PACKAGE_CHECK_RELATIVE=${PACKAGE_CHECK_PATH#/}
-  PACKAGE_CHECK_OLD_IFS=$IFS
-  IFS=/
-  set -f
-  set -- $PACKAGE_CHECK_RELATIVE
-  set +f
-  IFS=$PACKAGE_CHECK_OLD_IFS
-  for PACKAGE_CHECK_COMPONENT do
-    case "$PACKAGE_CHECK_COMPONENT" in
-      ''|.) continue ;;
-      ..) return 1 ;;
+package_finish_deploy() {
+  trap '' HUP INT TERM
+  PACKAGE_FINISH_FAILED=0
+  if test "${PACKAGE_WORK_OWNED:-0}" -eq 1; then
+    case "$PACKAGE_WORK" in
+      "${PACKAGE_PARENT:-}/.sensai-package."*)
+        if test -d "$PACKAGE_WORK" && ! test -L "$PACKAGE_WORK" &&
+           rm -rf "$PACKAGE_WORK" 2>/dev/null; then
+          PACKAGE_WORK_OWNED=0
+          PACKAGE_WORK=''
+        else
+          PACKAGE_FINISH_FAILED=1
+        fi
+        ;;
+      *) PACKAGE_FINISH_FAILED=1 ;;
     esac
-    if test "$PACKAGE_CHECK_CURRENT" = /; then
-      PACKAGE_CHECK_CURRENT=/$PACKAGE_CHECK_COMPONENT
-    else
-      PACKAGE_CHECK_CURRENT=$PACKAGE_CHECK_CURRENT/$PACKAGE_CHECK_COMPONENT
-    fi
-    test ! -L "$PACKAGE_CHECK_CURRENT" || return 1
-  done
-  return 0
+  fi
+  if test "${PACKAGE_LOCK_OWNED:-0}" -eq 1; then
+    case "$PACKAGE_LOCK" in
+      "${PACKAGE_PARENT:-}/.sensai-package-lock."*)
+        if test -d "$PACKAGE_LOCK" && ! test -L "$PACKAGE_LOCK" &&
+           rmdir "$PACKAGE_LOCK" 2>/dev/null; then
+          PACKAGE_LOCK_OWNED=0
+          PACKAGE_LOCK=''
+        else
+          PACKAGE_FINISH_FAILED=1
+        fi
+        ;;
+      *) PACKAGE_FINISH_FAILED=1 ;;
+    esac
+  fi
+  if test "$PACKAGE_FINISH_FAILED" -ne 0; then
+    PACKAGE_CLEANUP_FAILURE_REPORTED=1
+    fail "$EX_TEMPFAIL" package.rollback_failed owned_state_mismatch
+  fi
+  trap - EXIT
 }
 
 package_test_pause() {
@@ -147,10 +407,7 @@ package_test_pause() {
 
 package_source_leaf_regular() {
   PACKAGE_ENTRY=$1
-  case "$PACKAGE_ENTRY" in
-    bin/sensai) PACKAGE_CURRENT=$SOURCE_ROOT ;;
-    *) PACKAGE_CURRENT=$SOURCE_ROOT/output ;;
-  esac
+  PACKAGE_CURRENT=$SOURCE_PAYLOAD_ROOT
   test -d "$PACKAGE_CURRENT" && ! test -L "$PACKAGE_CURRENT" || return 1
   PACKAGE_OLD_IFS=$IFS
   IFS=/
@@ -176,10 +433,7 @@ package_source_leaf_regular() {
 }
 
 package_source_path() {
-  case "$1" in
-    bin/sensai) PACKAGE_SOURCE_PATH=$SOURCE_ROOT/bin/sensai ;;
-    *) PACKAGE_SOURCE_PATH=$SOURCE_ROOT/output/$1 ;;
-  esac
+  PACKAGE_SOURCE_PATH=$SOURCE_PAYLOAD_ROOT/$1
 }
 
 package_prepare_target() {
@@ -205,7 +459,7 @@ package_prepare_target() {
   case "$PACKAGE_BASE" in
     ''|.|..) fail "$EX_DATAERR" package.target_invalid basename ;;
   esac
-  package_no_symlink_components "$PACKAGE_PARENT_REQUEST" || \
+  path_existing_components_physical "$PACKAGE_PARENT_REQUEST" || \
     fail "$EX_CANTCREAT" package.parent_invalid symlink_or_traversal
   test -d "$PACKAGE_PARENT_REQUEST" && ! test -L "$PACKAGE_PARENT_REQUEST" || \
     fail "$EX_CANTCREAT" package.parent_invalid missing_or_symlink
@@ -219,11 +473,11 @@ package_prepare_target() {
     fail "$EX_DATAERR" package.target_not_normalized "$PACKAGE_TARGET"
 }
 
-package_validate_source() {
-  for PACKAGE_COMMAND in shasum find sort awk sed cmp mktemp mkdir rm cp mv dirname basename; do
+package_validate_source_contract() {
+  for PACKAGE_COMMAND in shasum find sort awk sed cmp; do
     require_command "$PACKAGE_COMMAND"
   done
-  PACKAGE_MANIFEST=$SOURCE_ROOT/manifest.txt
+  PACKAGE_MANIFEST=$PACKAGE_SOURCE_ROOT/manifest.txt
   test -f "$PACKAGE_MANIFEST" && ! test -L "$PACKAGE_MANIFEST" || \
     fail "$EX_DATAERR" package.manifest_invalid missing_or_symlink
   LC_ALL=C sort "$PACKAGE_MANIFEST" >"$PACKAGE_WORK/manifest.sorted" || \
@@ -237,15 +491,14 @@ package_validate_source() {
   ' "$PACKAGE_MANIFEST" || fail "$EX_DATAERR" package.manifest_invalid unsafe_or_duplicate
   PACKAGE_COUNT=$(awk 'END {print NR+0}' "$PACKAGE_MANIFEST") || \
     fail "$EX_UNAVAILABLE" package.manifest_unreadable count
-  test "$PACKAGE_COUNT" -eq 37 || \
+  test "$PACKAGE_COUNT" -eq 36 || \
     fail "$EX_DATAERR" package.manifest_invalid "count=$PACKAGE_COUNT"
 
-  { find "$SOURCE_ROOT/output" -mindepth 1 ! -type d -print | \
-      sed "s#^$SOURCE_ROOT/output/##"; printf '%s\n' bin/sensai; } | \
-    LC_ALL=C sort >"$PACKAGE_WORK/output.leaves" || \
-    fail "$EX_UNAVAILABLE" package.source_scan_failed output
-  cmp -s "$PACKAGE_MANIFEST" "$PACKAGE_WORK/output.leaves" || \
-    fail "$EX_DATAERR" package.source_exact_set_mismatch output
+  (CDPATH= cd -- "$SOURCE_PAYLOAD_ROOT" && find . -mindepth 1 ! -type d -print) | \
+    sed 's#^\./##' | LC_ALL=C sort >"$PACKAGE_WORK/config.leaves" || \
+    fail "$EX_UNAVAILABLE" package.source_scan_failed config_payload
+  cmp -s "$PACKAGE_MANIFEST" "$PACKAGE_WORK/config.leaves" || \
+    fail "$EX_DATAERR" package.source_exact_set_mismatch config_payload
 
   : >"$PACKAGE_WORK/source.sha256" || \
     fail "$EX_UNAVAILABLE" package.hash_write_failed source
@@ -262,7 +515,60 @@ package_validate_source() {
   PACKAGE_MANIFEST_SHA=$SHA_VALUE
   sha256_file "$PACKAGE_WORK/source.sha256" || fail "$EX_UNAVAILABLE" package.hash_failed payload
   PACKAGE_PAYLOAD_SHA=$SHA_VALUE
+}
+
+package_validate_source() {
+  for PACKAGE_COMMAND in mkdir rm cp mv ln uname dirname basename; do
+    require_command "$PACKAGE_COMMAND"
+  done
+  package_validate_source_contract
   package_test_pause after-source-hash
+}
+
+runtime_source_contract_cleanup() {
+  RUNTIME_SOURCE_CLEANUP_EXIT=$?
+  trap - EXIT HUP INT TERM
+  if test "${RUNTIME_SOURCE_WORK_OWNED:-0}" -eq 1 && \
+     test -n "${RUNTIME_SOURCE_WORK:-}" && test -d "$RUNTIME_SOURCE_WORK" && \
+     ! test -L "$RUNTIME_SOURCE_WORK"; then
+    case "$RUNTIME_SOURCE_WORK" in
+      "${TMPDIR:-/tmp}"/sensai-source-contract.*)
+        rm -rf "$RUNTIME_SOURCE_WORK" 2>/dev/null || true
+        RUNTIME_SOURCE_WORK_OWNED=0
+        ;;
+    esac
+  fi
+  exit "$RUNTIME_SOURCE_CLEANUP_EXIT"
+}
+
+runtime_validate_source_contract() {
+  test "$RUNTIME_MODE" = source || return 0
+  package_resolve_source_layout
+  require_command mkdir
+  require_command rm
+  RUNTIME_SOURCE_WORK=${TMPDIR:-/tmp}/sensai-source-contract.$$
+  RUNTIME_SOURCE_WORK_OWNED=0
+  PACKAGE_WORK=$RUNTIME_SOURCE_WORK
+  case "$RUNTIME_SOURCE_WORK" in
+    "${TMPDIR:-/tmp}"/sensai-source-contract.*) ;;
+    *) fail "$EX_UNAVAILABLE" runtime.source_contract_unavailable unsafe_temp ;;
+  esac
+  trap 'runtime_source_contract_cleanup' EXIT
+  trap 'exit 130' HUP INT TERM
+  trap '' HUP INT TERM
+  if ! mkdir "$RUNTIME_SOURCE_WORK" 2>/dev/null; then
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_UNAVAILABLE" runtime.source_contract_unavailable temp_collision
+  fi
+  RUNTIME_SOURCE_WORK_OWNED=1
+  trap 'exit 130' HUP INT TERM
+  package_validate_source_contract
+  rm -rf "$RUNTIME_SOURCE_WORK" || \
+    fail "$EX_UNAVAILABLE" runtime.source_contract_unavailable cleanup
+  RUNTIME_SOURCE_WORK_OWNED=0
+  RUNTIME_SOURCE_WORK=''
+  PACKAGE_WORK=''
+  trap - EXIT HUP INT TERM
 }
 
 package_verify_source_unchanged() {
@@ -293,10 +599,6 @@ package_copy_tree() {
     package_source_path "$PACKAGE_ENTRY"
     cp "$PACKAGE_SOURCE_PATH" "$PACKAGE_DEST" || \
       fail "$EX_CANTCREAT" package.copy_failed "$PACKAGE_ENTRY"
-    if test "$PACKAGE_ENTRY" = bin/sensai; then
-      chmod 755 "$PACKAGE_DEST" || \
-        fail "$EX_CANTCREAT" package.mode_failed "$PACKAGE_ENTRY"
-    fi
     test -f "$PACKAGE_DEST" && ! test -L "$PACKAGE_DEST" || \
       fail "$EX_DATAERR" package.stage_leaf_invalid "$PACKAGE_ENTRY"
   done <"$PACKAGE_MANIFEST"
@@ -308,8 +610,8 @@ package_copy_tree() {
   fi
   package_verify_source_unchanged
 
-  find "$PACKAGE_TREE" -mindepth 1 ! -type d -print | \
-    sed "s#^$PACKAGE_TREE/##" | LC_ALL=C sort >"$PACKAGE_WORK/stage.leaves" || \
+  (CDPATH= cd -- "$PACKAGE_TREE" && find . -mindepth 1 ! -type d -print) | \
+    sed 's#^\./##' | LC_ALL=C sort >"$PACKAGE_WORK/stage.leaves" || \
     fail "$EX_UNAVAILABLE" package.stage_scan_failed tree
   cmp -s "$PACKAGE_MANIFEST" "$PACKAGE_WORK/stage.leaves" || \
     fail "$EX_DATAERR" package.stage_exact_set_mismatch tree
@@ -325,25 +627,595 @@ package_copy_tree() {
     fail "$EX_DATAERR" package.stage_hash_mismatch payload
 }
 
+package_global_cleanup_pending() {
+  PACKAGE_PENDING_FAILED=0
+  PACKAGE_PENDING_TEMP=${PACKAGE_GLOBAL_PENDING_TEMP:-}
+  if test "${PACKAGE_GLOBAL_PENDING_OWNED:-0}" -ne 1; then
+    PACKAGE_GLOBAL_PENDING_TEMP=''
+    PACKAGE_GLOBAL_PENDING_TARGET=''
+    PACKAGE_GLOBAL_PENDING_CHILD=''
+    PACKAGE_GLOBAL_PENDING_HASH=''
+    PACKAGE_GLOBAL_PENDING_OWNED=0
+    return 0
+  fi
+  if test -n "$PACKAGE_PENDING_TEMP" && test -f "$PACKAGE_PENDING_TEMP" && \
+     ! test -L "$PACKAGE_PENDING_TEMP"; then
+    for PACKAGE_PENDING_PATH in \
+      "${PACKAGE_GLOBAL_PENDING_TARGET:-}" \
+      "${PACKAGE_GLOBAL_PENDING_CHILD:-}"; do
+      test -n "$PACKAGE_PENDING_PATH" || continue
+      if test -f "$PACKAGE_PENDING_PATH" && ! test -L "$PACKAGE_PENDING_PATH" && \
+         test "$PACKAGE_PENDING_PATH" -ef "$PACKAGE_PENDING_TEMP"; then
+        if sha256_file "$PACKAGE_PENDING_PATH" && \
+           test "$SHA_VALUE" = "${PACKAGE_GLOBAL_PENDING_HASH:-}"; then
+          rm -f "$PACKAGE_PENDING_PATH" 2>/dev/null || PACKAGE_PENDING_FAILED=1
+        else
+          PACKAGE_PENDING_FAILED=1
+        fi
+      fi
+    done
+    rm -f "$PACKAGE_PENDING_TEMP" 2>/dev/null || PACKAGE_PENDING_FAILED=1
+  elif test -n "$PACKAGE_PENDING_TEMP" && \
+       { test -e "$PACKAGE_PENDING_TEMP" || test -L "$PACKAGE_PENDING_TEMP"; }; then
+    PACKAGE_PENDING_FAILED=1
+  fi
+  PACKAGE_GLOBAL_PENDING_TEMP=''
+  PACKAGE_GLOBAL_PENDING_TARGET=''
+  PACKAGE_GLOBAL_PENDING_CHILD=''
+  PACKAGE_GLOBAL_PENDING_HASH=''
+  PACKAGE_GLOBAL_PENDING_OWNED=0
+  test "$PACKAGE_PENDING_FAILED" -eq 0
+}
+
+package_global_remove_journal_refs() {
+  PACKAGE_REF_FAILED=0
+  test -f "${PACKAGE_GLOBAL_CREATED_FILES:-}" || return 0
+  while IFS="$(printf '\t')" read -r PACKAGE_REF_HASH PACKAGE_REF_PATH PACKAGE_REF_TARGET; do
+    test -n "$PACKAGE_REF_PATH" || continue
+    if test -f "$PACKAGE_REF_PATH" && ! test -L "$PACKAGE_REF_PATH"; then
+      rm -f "$PACKAGE_REF_PATH" 2>/dev/null || PACKAGE_REF_FAILED=1
+    elif test -e "$PACKAGE_REF_PATH" || test -L "$PACKAGE_REF_PATH"; then
+      PACKAGE_REF_FAILED=1
+    fi
+  done <"$PACKAGE_GLOBAL_CREATED_FILES"
+  test "$PACKAGE_REF_FAILED" -eq 0
+}
+
+package_global_rollback() {
+  PACKAGE_ROLLBACK_FAILED=0
+  package_global_cleanup_pending || PACKAGE_ROLLBACK_FAILED=1
+  if test -f "${PACKAGE_GLOBAL_CREATED_FILES:-}"; then
+    while IFS="$(printf '\t')" read -r PACKAGE_ROLLBACK_HASH PACKAGE_ROLLBACK_REF PACKAGE_ROLLBACK_PATH; do
+      test -n "$PACKAGE_ROLLBACK_PATH" || continue
+      if test -e "$PACKAGE_ROLLBACK_PATH" || test -L "$PACKAGE_ROLLBACK_PATH"; then
+        if test -f "$PACKAGE_ROLLBACK_REF" && ! test -L "$PACKAGE_ROLLBACK_REF" && \
+           test -f "$PACKAGE_ROLLBACK_PATH" && ! test -L "$PACKAGE_ROLLBACK_PATH" && \
+           test "$PACKAGE_ROLLBACK_PATH" -ef "$PACKAGE_ROLLBACK_REF" && \
+           sha256_file "$PACKAGE_ROLLBACK_PATH" && \
+           test "$SHA_VALUE" = "$PACKAGE_ROLLBACK_HASH"; then
+          rm -f "$PACKAGE_ROLLBACK_PATH" 2>/dev/null || PACKAGE_ROLLBACK_FAILED=1
+        else
+          PACKAGE_ROLLBACK_FAILED=1
+        fi
+      fi
+      if test -f "$PACKAGE_ROLLBACK_REF" && ! test -L "$PACKAGE_ROLLBACK_REF"; then
+        rm -f "$PACKAGE_ROLLBACK_REF" 2>/dev/null || PACKAGE_ROLLBACK_FAILED=1
+      elif test -e "$PACKAGE_ROLLBACK_REF" || test -L "$PACKAGE_ROLLBACK_REF"; then
+        PACKAGE_ROLLBACK_FAILED=1
+      fi
+    done <"$PACKAGE_GLOBAL_CREATED_FILES"
+  fi
+}
+
+package_global_remove_owned_dirs() {
+  test -f "${PACKAGE_GLOBAL_OWNED_DIRS:-}" || return 0
+  awk '{line[NR]=$0} END {for (i=NR;i>0;i--) print line[i]}' \
+    "$PACKAGE_GLOBAL_OWNED_DIRS" >"$PACKAGE_WORK/owned-dirs.reverse" 2>/dev/null || return 1
+  while IFS= read -r PACKAGE_OWNED_DIR; do
+    test -n "$PACKAGE_OWNED_DIR" || continue
+    test ! -L "$PACKAGE_OWNED_DIR" || continue
+    rmdir "$PACKAGE_OWNED_DIR" 2>/dev/null || true
+  done <"$PACKAGE_WORK/owned-dirs.reverse"
+}
+
+package_global_cleanup() {
+  PACKAGE_GLOBAL_EXIT=$?
+  trap - EXIT HUP INT TERM
+  PACKAGE_ROLLBACK_FAILED=0
+  if test "${PACKAGE_GLOBAL_COMMITTED:-0}" -ne 1; then
+    package_global_rollback
+  else
+    package_global_cleanup_pending || PACKAGE_ROLLBACK_FAILED=1
+    package_global_remove_journal_refs || PACKAGE_ROLLBACK_FAILED=1
+  fi
+  package_global_cleanup_locks || PACKAGE_ROLLBACK_FAILED=1
+  if test "${PACKAGE_GLOBAL_COMMITTED:-0}" -ne 1; then
+    package_global_remove_owned_dirs || PACKAGE_ROLLBACK_FAILED=1
+  fi
+  package_global_cleanup_work || PACKAGE_ROLLBACK_FAILED=1
+  if test "$PACKAGE_ROLLBACK_FAILED" -ne 0; then
+    if test "${PACKAGE_GLOBAL_FAILURE_REPORTED:-0}" -ne 1; then
+      printf '%s\n' '오류 reason=package.rollback_failed detail=owned_state_mismatch' >&2
+    fi
+    exit "$EX_TEMPFAIL"
+  fi
+  exit "$PACKAGE_GLOBAL_EXIT"
+}
+
+package_global_cleanup_locks() {
+  PACKAGE_GLOBAL_STATE_FAILED=0
+  if test "${PACKAGE_GLOBAL_CLI_LOCK_OWNED:-0}" -eq 1; then
+    if rmdir "$PACKAGE_GLOBAL_CLI_LOCK" 2>/dev/null; then
+      PACKAGE_GLOBAL_CLI_LOCK_OWNED=0
+    else
+      PACKAGE_GLOBAL_STATE_FAILED=1
+    fi
+  fi
+  if test "${PACKAGE_GLOBAL_CONFIG_LOCK_OWNED:-0}" -eq 1; then
+    if rmdir "$PACKAGE_GLOBAL_CONFIG_LOCK" 2>/dev/null; then
+      PACKAGE_GLOBAL_CONFIG_LOCK_OWNED=0
+    else
+      PACKAGE_GLOBAL_STATE_FAILED=1
+    fi
+  fi
+  test "$PACKAGE_GLOBAL_STATE_FAILED" -eq 0
+}
+
+package_global_cleanup_work() {
+  PACKAGE_GLOBAL_STATE_FAILED=0
+  if test "${PACKAGE_WORK_OWNED:-0}" -eq 1 && test -n "${PACKAGE_WORK:-}"; then
+    if test -d "$PACKAGE_WORK" && ! test -L "$PACKAGE_WORK"; then
+      case "$PACKAGE_WORK" in
+        "${TMPDIR:-/tmp}"/sensai-install.*)
+          if rm -rf "$PACKAGE_WORK" 2>/dev/null; then
+            PACKAGE_WORK_OWNED=0
+            PACKAGE_WORK=''
+          else
+            PACKAGE_GLOBAL_STATE_FAILED=1
+          fi
+          ;;
+        *) PACKAGE_GLOBAL_STATE_FAILED=1 ;;
+      esac
+    elif test -e "$PACKAGE_WORK" || test -L "$PACKAGE_WORK"; then
+      PACKAGE_GLOBAL_STATE_FAILED=1
+    else
+      PACKAGE_WORK_OWNED=0
+      PACKAGE_WORK=''
+    fi
+  elif test "${PACKAGE_WORK_OWNED:-0}" -ne 1; then
+    PACKAGE_WORK=''
+  fi
+  test "$PACKAGE_GLOBAL_STATE_FAILED" -eq 0
+}
+
+package_global_finish_commit() {
+  trap '' HUP INT TERM
+  PACKAGE_GLOBAL_COMMITTED=1
+  PACKAGE_GLOBAL_FINISH_FAILED=0
+  package_global_cleanup_pending || PACKAGE_GLOBAL_FINISH_FAILED=1
+  package_global_remove_journal_refs || PACKAGE_GLOBAL_FINISH_FAILED=1
+  package_global_cleanup_locks || PACKAGE_GLOBAL_FINISH_FAILED=1
+  package_global_cleanup_work || PACKAGE_GLOBAL_FINISH_FAILED=1
+  if test "$PACKAGE_GLOBAL_FINISH_FAILED" -ne 0; then
+    trap 'exit 130' HUP INT TERM
+    PACKAGE_GLOBAL_FAILURE_REPORTED=1
+    fail "$EX_TEMPFAIL" package.rollback_failed owned_state_mismatch
+  fi
+  PACKAGE_GLOBAL_CREATED_FILES=''
+  PACKAGE_GLOBAL_OWNED_DIRS=''
+  trap - EXIT HUP INT TERM
+}
+
+package_global_prepare_targets() {
+  test -n "${HOME:-}" || fail "$EX_DATAERR" package.home_invalid missing
+  runtime_path_normalized "$HOME" || fail "$EX_DATAERR" package.home_invalid not_normalized
+  path_existing_components_physical "$HOME" || fail "$EX_CANTCREAT" package.home_invalid symlink
+  test -d "$HOME" && ! test -L "$HOME" || fail "$EX_CANTCREAT" package.home_invalid not_directory
+  PACKAGE_GLOBAL_HOME=$(CDPATH= cd -- "$HOME" 2>/dev/null && pwd -P) || \
+    fail "$EX_CANTCREAT" package.home_invalid unresolved
+  test "$PACKAGE_GLOBAL_HOME" = "$HOME" || fail "$EX_DATAERR" package.home_invalid not_physical
+
+  PACKAGE_GLOBAL_CONFIG_ROOT=$PACKAGE_GLOBAL_HOME/.config/opencode
+  path_existing_components_physical "$PACKAGE_GLOBAL_CONFIG_ROOT" || \
+    fail "$EX_CANTCREAT" package.config_root_invalid symlink
+  test -d "$PACKAGE_GLOBAL_CONFIG_ROOT" && ! test -L "$PACKAGE_GLOBAL_CONFIG_ROOT" || \
+    fail "$EX_CANTCREAT" package.config_root_invalid missing_or_not_directory
+  PACKAGE_GLOBAL_CONFIG_PHYSICAL=$(CDPATH= cd -- "$PACKAGE_GLOBAL_CONFIG_ROOT" 2>/dev/null && pwd -P) || \
+    fail "$EX_CANTCREAT" package.config_root_invalid unresolved
+  test "$PACKAGE_GLOBAL_CONFIG_PHYSICAL" = "$PACKAGE_GLOBAL_CONFIG_ROOT" || \
+    fail "$EX_DATAERR" package.config_root_invalid not_physical
+
+  PACKAGE_GLOBAL_CLI_PARENT=$PACKAGE_GLOBAL_HOME/.local/bin
+  PACKAGE_GLOBAL_CLI=$PACKAGE_GLOBAL_CLI_PARENT/sensai
+  path_existing_components_physical "$PACKAGE_GLOBAL_CLI_PARENT" || \
+    fail "$EX_CANTCREAT" package.cli_parent_invalid symlink
+  if test -e "$PACKAGE_GLOBAL_HOME/.local"; then
+    test -d "$PACKAGE_GLOBAL_HOME/.local" && ! test -L "$PACKAGE_GLOBAL_HOME/.local" || \
+      fail "$EX_CANTCREAT" package.cli_parent_invalid local_not_directory
+  fi
+  if test -e "$PACKAGE_GLOBAL_CLI_PARENT"; then
+    test -d "$PACKAGE_GLOBAL_CLI_PARENT" && ! test -L "$PACKAGE_GLOBAL_CLI_PARENT" || \
+      fail "$EX_CANTCREAT" package.cli_parent_invalid bin_not_directory
+  fi
+}
+
+package_global_managed_state() {
+  PACKAGE_STATE_RELATIVE=$1
+  PACKAGE_STATE_SOURCE=$2
+  PACKAGE_STATE_CURRENT=$PACKAGE_GLOBAL_CONFIG_ROOT
+  PACKAGE_STATE_OLD_IFS=$IFS
+  IFS=/
+  set -f
+  set -- $PACKAGE_STATE_RELATIVE
+  set +f
+  IFS=$PACKAGE_STATE_OLD_IFS
+  while test "$#" -gt 0; do
+    PACKAGE_STATE_COMPONENT=$1
+    shift
+    PACKAGE_STATE_CURRENT=$PACKAGE_STATE_CURRENT/$PACKAGE_STATE_COMPONENT
+    test ! -L "$PACKAGE_STATE_CURRENT" || return 2
+    if ! test -e "$PACKAGE_STATE_CURRENT"; then
+      return 1
+    fi
+    if test "$#" -gt 0; then
+      test -d "$PACKAGE_STATE_CURRENT" || return 2
+    else
+      test -f "$PACKAGE_STATE_CURRENT" && cmp -s "$PACKAGE_STATE_SOURCE" "$PACKAGE_STATE_CURRENT" || \
+        return 2
+    fi
+  done
+  return 0
+}
+
+package_global_classify() {
+  : >"$PACKAGE_WORK/absent.leaves" || fail "$EX_UNAVAILABLE" package.journal_failed absent
+  PACKAGE_GLOBAL_ABSENT_COUNT=0
+  PACKAGE_GLOBAL_UNCHANGED_COUNT=0
+  while IFS= read -r PACKAGE_ENTRY; do
+    package_global_managed_state "$PACKAGE_ENTRY" "$PACKAGE_TREE/$PACKAGE_ENTRY"
+    PACKAGE_STATE=$?
+    case "$PACKAGE_STATE" in
+      0) PACKAGE_GLOBAL_UNCHANGED_COUNT=$((PACKAGE_GLOBAL_UNCHANGED_COUNT + 1)) ;;
+      1)
+        printf '%s\n' "$PACKAGE_ENTRY" >>"$PACKAGE_WORK/absent.leaves" || \
+          fail "$EX_UNAVAILABLE" package.journal_failed absent
+        PACKAGE_GLOBAL_ABSENT_COUNT=$((PACKAGE_GLOBAL_ABSENT_COUNT + 1))
+        ;;
+      *) fail "$EX_CANTCREAT" package.managed_conflict "$PACKAGE_ENTRY" ;;
+    esac
+  done <"$PACKAGE_MANIFEST"
+
+  if test -L "$PACKAGE_GLOBAL_CLI"; then
+    fail "$EX_CANTCREAT" package.managed_conflict cli
+  elif ! test -e "$PACKAGE_GLOBAL_CLI"; then
+    PACKAGE_GLOBAL_CLI_ABSENT=1
+  elif test -f "$PACKAGE_GLOBAL_CLI" && test -x "$PACKAGE_GLOBAL_CLI" && \
+       package_global_cli_mode_0755 "$PACKAGE_GLOBAL_CLI" && \
+       cmp -s "$PACKAGE_WORK/cli" "$PACKAGE_GLOBAL_CLI"; then
+    PACKAGE_GLOBAL_CLI_ABSENT=0
+  else
+    fail "$EX_CANTCREAT" package.managed_conflict cli
+  fi
+}
+
+package_global_cli_mode_0755() {
+  PACKAGE_MODE_PATH=$(find "$1" -prune -type f -perm 0755 -print 2>/dev/null) || return 1
+  test "$PACKAGE_MODE_PATH" = "$1"
+}
+
+package_global_verify_installed_config() {
+  : >"$PACKAGE_WORK/installed-config.sha256" || \
+    fail "$EX_UNAVAILABLE" package.hash_write_failed installed_config
+  while IFS= read -r PACKAGE_ENTRY; do
+    package_global_managed_state "$PACKAGE_ENTRY" "$PACKAGE_TREE/$PACKAGE_ENTRY"
+    test "$?" -eq 0 || fail "$EX_DATAERR" package.installed_state_invalid "$PACKAGE_ENTRY"
+    sha256_file "$PACKAGE_GLOBAL_CONFIG_ROOT/$PACKAGE_ENTRY" || \
+      fail "$EX_UNAVAILABLE" package.hash_failed "$PACKAGE_ENTRY"
+    printf '%s  %s\n' "$SHA_VALUE" "$PACKAGE_ENTRY" \
+      >>"$PACKAGE_WORK/installed-config.sha256" || \
+      fail "$EX_UNAVAILABLE" package.hash_write_failed installed_config
+  done <"$PACKAGE_MANIFEST"
+  cmp -s "$PACKAGE_WORK/stage.sha256" "$PACKAGE_WORK/installed-config.sha256" || \
+    fail "$EX_DATAERR" package.installed_hash_mismatch config
+  sha256_file "$PACKAGE_WORK/installed-config.sha256" || \
+    fail "$EX_UNAVAILABLE" package.hash_failed installed_config
+  PACKAGE_GLOBAL_CONFIG_SHA=$SHA_VALUE
+}
+
+package_global_verify_installed_cli() {
+  path_existing_components_physical "$PACKAGE_GLOBAL_CLI" || \
+    fail "$EX_DATAERR" package.installed_state_invalid cli_path
+  test -f "$PACKAGE_GLOBAL_CLI" && ! test -L "$PACKAGE_GLOBAL_CLI" && \
+    package_global_cli_mode_0755 "$PACKAGE_GLOBAL_CLI" && \
+    cmp -s "$PACKAGE_WORK/cli" "$PACKAGE_GLOBAL_CLI" || \
+    fail "$EX_DATAERR" package.installed_state_invalid cli
+  sha256_file "$PACKAGE_GLOBAL_CLI" || fail "$EX_UNAVAILABLE" package.hash_failed installed_cli
+  test "$SHA_VALUE" = "$PACKAGE_GLOBAL_CLI_SHA" || \
+    fail "$EX_DATAERR" package.installed_hash_mismatch cli
+  PACKAGE_GLOBAL_INSTALLED_CLI_SHA=$SHA_VALUE
+}
+
+package_global_ensure_dir() {
+  PACKAGE_ENSURE_DIR=$1
+  if test -L "$PACKAGE_ENSURE_DIR"; then
+    fail "$EX_CANTCREAT" package.managed_conflict "$PACKAGE_ENSURE_DIR"
+  elif test -e "$PACKAGE_ENSURE_DIR"; then
+    test -d "$PACKAGE_ENSURE_DIR" || \
+      fail "$EX_CANTCREAT" package.managed_conflict "$PACKAGE_ENSURE_DIR"
+    return 0
+  fi
+  trap '' HUP INT TERM
+  if ! mkdir "$PACKAGE_ENSURE_DIR" 2>/dev/null; then
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_CANTCREAT" package.managed_conflict "$PACKAGE_ENSURE_DIR"
+  fi
+  if ! printf '%s\n' "$PACKAGE_ENSURE_DIR" >>"$PACKAGE_GLOBAL_OWNED_DIRS"; then
+    rmdir "$PACKAGE_ENSURE_DIR" 2>/dev/null || true
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_UNAVAILABLE" package.journal_failed owned_dir
+  fi
+  trap 'exit 130' HUP INT TERM
+}
+
+package_global_prepare_cli_parent() {
+  package_global_ensure_dir "$PACKAGE_GLOBAL_HOME/.local"
+  package_global_ensure_dir "$PACKAGE_GLOBAL_CLI_PARENT"
+}
+
+package_global_lock() {
+  PACKAGE_GLOBAL_CONFIG_LOCK=$PACKAGE_GLOBAL_CONFIG_ROOT/.sensai-install-lock
+  PACKAGE_GLOBAL_CLI_LOCK=$PACKAGE_GLOBAL_CLI_PARENT/.sensai-install-lock
+  PACKAGE_GLOBAL_CONFIG_LOCK_OWNED=0
+  PACKAGE_GLOBAL_CLI_LOCK_OWNED=0
+  trap '' HUP INT TERM
+  if ! mkdir "$PACKAGE_GLOBAL_CONFIG_LOCK" 2>/dev/null; then
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_TEMPFAIL" package.locked config_root
+  fi
+  PACKAGE_GLOBAL_CONFIG_LOCK_OWNED=1
+  trap 'exit 130' HUP INT TERM
+  package_global_prepare_cli_parent
+  trap '' HUP INT TERM
+  if ! mkdir "$PACKAGE_GLOBAL_CLI_LOCK" 2>/dev/null; then
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_TEMPFAIL" package.locked cli_parent
+  fi
+  PACKAGE_GLOBAL_CLI_LOCK_OWNED=1
+  trap 'exit 130' HUP INT TERM
+}
+
+package_global_prepare_managed_parent() {
+  PACKAGE_PARENT_RELATIVE=$(dirname -- "$1") || \
+    fail "$EX_UNAVAILABLE" package.install_path_failed "$1"
+  test "$PACKAGE_PARENT_RELATIVE" != . || return 0
+  PACKAGE_PARENT_CURRENT=$PACKAGE_GLOBAL_CONFIG_ROOT
+  PACKAGE_PARENT_OLD_IFS=$IFS
+  IFS=/
+  set -f
+  set -- $PACKAGE_PARENT_RELATIVE
+  set +f
+  IFS=$PACKAGE_PARENT_OLD_IFS
+  for PACKAGE_PARENT_COMPONENT do
+    PACKAGE_PARENT_CURRENT=$PACKAGE_PARENT_CURRENT/$PACKAGE_PARENT_COMPONENT
+    package_global_ensure_dir "$PACKAGE_PARENT_CURRENT"
+  done
+}
+
+package_global_link_prepared() {
+  PACKAGE_LINK_SOURCE=$1
+  PACKAGE_LINK_TARGET=$2
+  PACKAGE_LINK_PLATFORM=$(uname -s 2>/dev/null) || \
+    fail "$EX_UNAVAILABLE" package.publish_failed platform
+  case "$PACKAGE_LINK_PLATFORM" in
+    Linux) ln -T "$PACKAGE_LINK_SOURCE" "$PACKAGE_LINK_TARGET" 2>/dev/null ;;
+    Darwin) ln -h "$PACKAGE_LINK_SOURCE" "$PACKAGE_LINK_TARGET" 2>/dev/null ;;
+    *) fail "$EX_UNAVAILABLE" package.publish_failed unsupported_platform ;;
+  esac
+}
+
+package_global_publish_file() {
+  PACKAGE_PUBLISH_SOURCE=$1
+  PACKAGE_PUBLISH_TARGET=$2
+  PACKAGE_PUBLISH_EXECUTABLE=$3
+  PACKAGE_PUBLISH_PARENT=$(dirname -- "$PACKAGE_PUBLISH_TARGET") || \
+    fail "$EX_UNAVAILABLE" package.install_path_failed "$PACKAGE_PUBLISH_TARGET"
+  sha256_file "$PACKAGE_PUBLISH_SOURCE" || \
+    fail "$EX_UNAVAILABLE" package.hash_failed "$PACKAGE_PUBLISH_TARGET"
+  PACKAGE_PUBLISH_HASH=$SHA_VALUE
+  if test -e "$PACKAGE_PUBLISH_TARGET" || test -L "$PACKAGE_PUBLISH_TARGET"; then
+    fail "$EX_CANTCREAT" package.managed_conflict "$PACKAGE_PUBLISH_TARGET"
+  fi
+  PACKAGE_GLOBAL_PUBLISH_SEQUENCE=$((PACKAGE_GLOBAL_PUBLISH_SEQUENCE + 1))
+  PACKAGE_PENDING_BASE=.sensai-install.$$.$PACKAGE_GLOBAL_PUBLISH_SEQUENCE
+  PACKAGE_GLOBAL_PENDING_TEMP=$PACKAGE_PUBLISH_PARENT/$PACKAGE_PENDING_BASE
+  PACKAGE_GLOBAL_PENDING_TARGET=$PACKAGE_PUBLISH_TARGET
+  PACKAGE_GLOBAL_PENDING_HASH=$PACKAGE_PUBLISH_HASH
+  PACKAGE_GLOBAL_PENDING_CHILD=$PACKAGE_PUBLISH_TARGET/$PACKAGE_PENDING_BASE
+  PACKAGE_GLOBAL_PENDING_OWNED=0
+  PACKAGE_PENDING_OLD_UMASK=$(umask)
+  umask 077
+  trap '' HUP INT TERM
+  if ! (set -C; : >"$PACKAGE_GLOBAL_PENDING_TEMP") 2>/dev/null; then
+    umask "$PACKAGE_PENDING_OLD_UMASK"
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_CANTCREAT" package.publish_failed temp_collision
+  fi
+  PACKAGE_GLOBAL_PENDING_OWNED=1
+  if ! umask "$PACKAGE_PENDING_OLD_UMASK"; then
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_UNAVAILABLE" package.publish_failed umask_restore
+  fi
+  trap 'exit 130' HUP INT TERM
+  cp "$PACKAGE_PUBLISH_SOURCE" "$PACKAGE_GLOBAL_PENDING_TEMP" || \
+    fail "$EX_CANTCREAT" package.publish_failed copy
+  if test "$PACKAGE_PUBLISH_EXECUTABLE" -eq 1; then
+    chmod 755 "$PACKAGE_GLOBAL_PENDING_TEMP" || fail "$EX_CANTCREAT" package.publish_failed mode
+  fi
+  sha256_file "$PACKAGE_GLOBAL_PENDING_TEMP" && test "$SHA_VALUE" = "$PACKAGE_PUBLISH_HASH" || \
+    fail "$EX_DATAERR" package.stage_hash_mismatch "$PACKAGE_PUBLISH_TARGET"
+  package_test_pause before-publish-link
+  if test -e "$PACKAGE_PUBLISH_TARGET" || test -L "$PACKAGE_PUBLISH_TARGET"; then
+    fail "$EX_CANTCREAT" package.managed_conflict "$PACKAGE_PUBLISH_TARGET"
+  fi
+  if ! package_global_link_prepared "$PACKAGE_GLOBAL_PENDING_TEMP" "$PACKAGE_PUBLISH_TARGET"; then
+    if test -e "$PACKAGE_PUBLISH_TARGET" || test -L "$PACKAGE_PUBLISH_TARGET" || \
+       test -e "$PACKAGE_GLOBAL_PENDING_CHILD" || \
+       test -L "$PACKAGE_GLOBAL_PENDING_CHILD"; then
+      fail "$EX_CANTCREAT" package.managed_conflict "$PACKAGE_PUBLISH_TARGET"
+    fi
+    fail "$EX_CANTCREAT" package.publish_failed link
+  fi
+  if ! test -f "$PACKAGE_PUBLISH_TARGET" || test -L "$PACKAGE_PUBLISH_TARGET" || \
+     ! test "$PACKAGE_PUBLISH_TARGET" -ef "$PACKAGE_GLOBAL_PENDING_TEMP"; then
+    fail "$EX_CANTCREAT" package.managed_conflict "$PACKAGE_PUBLISH_TARGET"
+  fi
+  package_test_pause after-publish-before-journal
+  if ! printf '%s\t%s\t%s\n' "$PACKAGE_PUBLISH_HASH" \
+      "$PACKAGE_GLOBAL_PENDING_TEMP" "$PACKAGE_PUBLISH_TARGET" \
+      >>"$PACKAGE_GLOBAL_CREATED_FILES"; then
+    if package_global_cleanup_pending; then
+      fail "$EX_UNAVAILABLE" package.journal_failed created_file
+    fi
+    printf '%s\n' '오류 reason=package.rollback_failed detail=owned_state_mismatch' >&2
+    exit "$EX_TEMPFAIL"
+  fi
+  PACKAGE_GLOBAL_PENDING_TEMP=''
+  PACKAGE_GLOBAL_PENDING_TARGET=''
+  PACKAGE_GLOBAL_PENDING_CHILD=''
+  PACKAGE_GLOBAL_PENDING_HASH=''
+  PACKAGE_GLOBAL_PENDING_OWNED=0
+}
+
+package_install_global() {
+  test "$RUNTIME_MODE" = source || \
+    fail "$EX_DATAERR" runtime.asset_invalid source_layout_required
+  test "$#" -eq 0 || { usage >&2; exit "$EX_USAGE"; }
+  package_resolve_source_layout
+  package_global_prepare_targets
+  PACKAGE_PARENT=$PACKAGE_GLOBAL_CONFIG_ROOT
+  PACKAGE_WORK=${TMPDIR:-/tmp}/sensai-install.$$
+  PACKAGE_WORK_OWNED=0
+  PACKAGE_GLOBAL_CREATED_FILES=''
+  PACKAGE_GLOBAL_OWNED_DIRS=''
+  PACKAGE_GLOBAL_COMMITTED=0
+  PACKAGE_GLOBAL_PENDING_TEMP=''
+  PACKAGE_GLOBAL_PENDING_TARGET=''
+  PACKAGE_GLOBAL_PENDING_CHILD=''
+  PACKAGE_GLOBAL_PENDING_HASH=''
+  PACKAGE_GLOBAL_PENDING_OWNED=0
+  PACKAGE_GLOBAL_PUBLISH_SEQUENCE=0
+  PACKAGE_GLOBAL_CONFIG_LOCK=''
+  PACKAGE_GLOBAL_CLI_LOCK=''
+  PACKAGE_GLOBAL_CONFIG_LOCK_OWNED=0
+  PACKAGE_GLOBAL_CLI_LOCK_OWNED=0
+  PACKAGE_GLOBAL_FAILURE_REPORTED=0
+  case "$PACKAGE_WORK" in
+    "${TMPDIR:-/tmp}"/sensai-install.*) ;;
+    *) fail "$EX_CANTCREAT" package.stage_create_failed unsafe_work ;;
+  esac
+  trap 'package_global_cleanup' EXIT
+  trap 'exit 130' HUP INT TERM
+  trap '' HUP INT TERM
+  if ! mkdir "$PACKAGE_WORK" 2>/dev/null; then
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_CANTCREAT" package.stage_create_failed work_collision
+  fi
+  PACKAGE_WORK_OWNED=1
+  trap 'exit 130' HUP INT TERM
+  PACKAGE_GLOBAL_CREATED_FILES=$PACKAGE_WORK/created-files.tsv
+  PACKAGE_GLOBAL_OWNED_DIRS=$PACKAGE_WORK/owned-dirs.txt
+  : >"$PACKAGE_GLOBAL_CREATED_FILES" || fail "$EX_UNAVAILABLE" package.journal_failed created_file
+  : >"$PACKAGE_GLOBAL_OWNED_DIRS" || fail "$EX_UNAVAILABLE" package.journal_failed owned_dir
+
+  package_validate_source
+  package_copy_tree
+  test -f "$EXECUTABLE_PATH" && ! test -L "$EXECUTABLE_PATH" && test -x "$EXECUTABLE_PATH" || \
+    fail "$EX_DATAERR" package.source_cli_invalid executable
+  sha256_file "$EXECUTABLE_PATH" || fail "$EX_UNAVAILABLE" package.hash_failed cli
+  PACKAGE_GLOBAL_CLI_SHA=$SHA_VALUE
+  cp "$EXECUTABLE_PATH" "$PACKAGE_WORK/cli" || fail "$EX_CANTCREAT" package.copy_failed cli
+  chmod 755 "$PACKAGE_WORK/cli" || fail "$EX_CANTCREAT" package.mode_failed cli
+  sha256_file "$PACKAGE_WORK/cli" && test "$SHA_VALUE" = "$PACKAGE_GLOBAL_CLI_SHA" || \
+    fail "$EX_DATAERR" package.stage_hash_mismatch cli
+
+  package_global_classify
+  package_global_lock
+  package_global_classify
+  package_verify_source_unchanged
+  sha256_file "$EXECUTABLE_PATH" && test "$SHA_VALUE" = "$PACKAGE_GLOBAL_CLI_SHA" || \
+    fail "$EX_DATAERR" package.source_hash_drift cli
+
+  PACKAGE_GLOBAL_CREATED_COUNT=0
+  while IFS= read -r PACKAGE_ENTRY; do
+    test -n "$PACKAGE_ENTRY" || continue
+    package_global_prepare_managed_parent "$PACKAGE_ENTRY"
+    package_global_publish_file "$PACKAGE_TREE/$PACKAGE_ENTRY" \
+      "$PACKAGE_GLOBAL_CONFIG_ROOT/$PACKAGE_ENTRY" 0
+    PACKAGE_GLOBAL_CREATED_COUNT=$((PACKAGE_GLOBAL_CREATED_COUNT + 1))
+  done <"$PACKAGE_WORK/absent.leaves"
+  package_test_pause before-cli-publish
+  if test "${SENSAI_TEST_INTERNAL:-0}" = 1 && \
+     test "${SENSAI_TEST_PACKAGE_FAULT:-}" = before-cli-publish; then
+    fail "$EX_CANTCREAT" package.publish_failed cli_fault
+  fi
+  if test "$PACKAGE_GLOBAL_CLI_ABSENT" -eq 1; then
+    package_global_publish_file "$PACKAGE_WORK/cli" "$PACKAGE_GLOBAL_CLI" 1
+    PACKAGE_GLOBAL_CLI_RESULT=created
+  else
+    PACKAGE_GLOBAL_CLI_RESULT=unchanged
+  fi
+
+  package_global_verify_installed_config
+  package_global_verify_installed_cli
+  PACKAGE_STAGE_SHA=$PACKAGE_GLOBAL_CONFIG_SHA
+  case ":${PATH:-}:" in
+    *":$PACKAGE_GLOBAL_CLI_PARENT:"*) PACKAGE_GLOBAL_PATH_CONTAINS=true ;;
+    *) PACKAGE_GLOBAL_PATH_CONTAINS=false ;;
+  esac
+  package_global_finish_commit
+  printf '패키지 mode=install status=READY config_target=%s cli_target=%s leaf_count=%s manifest_sha256=%s config_sha256=%s cli_sha256=%s config_created=%s config_unchanged=%s cli_result=%s path_contains_local_bin=%s\n' \
+    "$PACKAGE_GLOBAL_CONFIG_ROOT" "$PACKAGE_GLOBAL_CLI" "$PACKAGE_COUNT" \
+    "$PACKAGE_MANIFEST_SHA" "$PACKAGE_GLOBAL_CONFIG_SHA" "$PACKAGE_GLOBAL_INSTALLED_CLI_SHA" \
+    "$PACKAGE_GLOBAL_CREATED_COUNT" "$PACKAGE_GLOBAL_UNCHANGED_COUNT" \
+    "$PACKAGE_GLOBAL_CLI_RESULT" "$PACKAGE_GLOBAL_PATH_CONTAINS"
+  if test "$PACKAGE_GLOBAL_PATH_CONTAINS" = false; then
+    printf '%s\n' '안내 export PATH="$HOME/.local/bin:$PATH"'
+  fi
+}
+
 package_deploy() {
   PACKAGE_MODE=$1
   shift
+  test "$RUNTIME_MODE" = source || \
+    fail "$EX_DATAERR" runtime.asset_invalid source_layout_required
+  package_resolve_source_layout
   test "$#" -eq 1 || { usage >&2; exit "$EX_USAGE"; }
   package_prepare_target "$1"
   PACKAGE_LOCK=$PACKAGE_PARENT/.sensai-package-lock.$PACKAGE_BASE
   PACKAGE_LOCK_OWNED=0
+  PACKAGE_WORK=$PACKAGE_PARENT/.sensai-package.$$.stage
+  PACKAGE_WORK_OWNED=0
+  PACKAGE_CLEANUP_FAILURE_REPORTED=0
   trap 'package_cleanup' EXIT
   trap 'exit 130' HUP INT TERM
+  trap '' HUP INT TERM
   if ! mkdir "$PACKAGE_LOCK" 2>/dev/null; then
+    trap 'exit 130' HUP INT TERM
     if test -e "$PACKAGE_LOCK" || test -L "$PACKAGE_LOCK"; then
       fail "$EX_TEMPFAIL" package.locked lock_exists
     fi
     fail "$EX_CANTCREAT" package.lock_create_failed "$PACKAGE_LOCK"
   fi
   PACKAGE_LOCK_OWNED=1
+  trap 'exit 130' HUP INT TERM
   package_test_pause after-lock
-  PACKAGE_WORK=$(mktemp -d "$PACKAGE_PARENT/.sensai-package.XXXXXX") || \
-    fail "$EX_CANTCREAT" package.stage_create_failed work
+  trap '' HUP INT TERM
+  if ! mkdir "$PACKAGE_WORK" 2>/dev/null; then
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_CANTCREAT" package.stage_create_failed work_collision
+  fi
+  PACKAGE_WORK_OWNED=1
+  trap 'exit 130' HUP INT TERM
   package_validate_source
   package_copy_tree
   if test -e "$PACKAGE_TARGET" || test -L "$PACKAGE_TARGET"; then
@@ -353,11 +1225,15 @@ package_deploy() {
      test "${SENSAI_TEST_PACKAGE_FAULT:-}" = atomic-move; then
     fail "$EX_CANTCREAT" package.atomic_move_failed simulated_exdev
   fi
-  mv "$PACKAGE_TREE" "$PACKAGE_TARGET" || \
-    fail "$EX_CANTCREAT" package.atomic_move_failed "$PACKAGE_TARGET"
   sha256_file "$PACKAGE_WORK/stage.sha256" || \
     fail "$EX_UNAVAILABLE" package.hash_failed staged_payload
   PACKAGE_STAGE_SHA=$SHA_VALUE
+  trap '' HUP INT TERM
+  if ! mv "$PACKAGE_TREE" "$PACKAGE_TARGET"; then
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_CANTCREAT" package.atomic_move_failed "$PACKAGE_TARGET"
+  fi
+  package_finish_deploy
   printf '패키지 mode=%s status=READY files=%s manifest_sha256=%s payload_sha256=%s stage_sha256=%s target=%s\n' \
     "$PACKAGE_MODE" "$PACKAGE_COUNT" "$PACKAGE_MANIFEST_SHA" "$PACKAGE_PAYLOAD_SHA" \
     "$PACKAGE_STAGE_SHA" "$PACKAGE_TARGET"
@@ -487,7 +1363,6 @@ utc_now_after() {
 validate_trace() {
   TRACE_FILE=$1
   test -f "$TRACE_FILE" && ! test -L "$TRACE_FILE" || return 1
-  jq empty "$RUNTIME_ROOT/schemas/trace.schema.json" >/dev/null 2>&1 || return 1
   jq -e '
     type == "object"
     and .schema_version == "2.0"
@@ -504,16 +1379,15 @@ validate_trace() {
       .extension_requirements,.designs,.bindings,.unknowns,.unsupported,.provenance
     ][]; type == "array")
   ' "$TRACE_FILE" >/dev/null 2>&1 || return 1
-  jq -e -f "$RUNTIME_ROOT/recipes/trace.jq" "$TRACE_FILE" >/dev/null 2>&1
+  jq -e -f "$TRACE_RECIPE_PATH" "$TRACE_FILE" >/dev/null 2>&1
 }
 
 validate_progress() {
   PROGRESS_FILE=$1
   test -f "$PROGRESS_FILE" && ! test -L "$PROGRESS_FILE" || return 1
-  jq empty "$RUNTIME_ROOT/schemas/progress.schema.json" >/dev/null 2>&1 || return 1
   jq -n --slurpfile progress "$PROGRESS_FILE" \
     '{mode:"validate",progress:$progress[0]}' >"$MISSION_WORK/progress-validate.json" || return 1
-  jq -e -f "$RUNTIME_ROOT/recipes/progress.jq" \
+  jq -e -f "$PROGRESS_RECIPE_PATH" \
     "$MISSION_WORK/progress-validate.json" >/dev/null 2>&1
 }
 
@@ -529,7 +1403,13 @@ mission_paths() {
 }
 
 mission_work_prepare() {
+  runtime_validate_source_contract
   require_command jq
+  resolve_project_root
+  runtime_resolve_mission_assets
+  printf '런타임 trace_schema=%s progress_schema=%s trace_recipe=%s progress_recipe=%s\n' \
+    "$TRACE_SCHEMA_PROVENANCE" "$PROGRESS_SCHEMA_PROVENANCE" \
+    "$TRACE_RECIPE_PROVENANCE" "$PROGRESS_RECIPE_PROVENANCE" >&2
   require_command shasum
   require_command git
   require_command find
@@ -545,7 +1425,6 @@ mission_work_prepare() {
   require_command cat
   require_command cmp
   require_command sleep
-  resolve_project_root
   MISSION_WORK=$(mktemp -d "${TMPDIR:-/tmp}/sensai-cli.XXXXXX") || \
     fail "$EX_UNAVAILABLE" mission.temp_unavailable create_failed
   case "$MISSION_WORK" in
@@ -683,7 +1562,7 @@ mission_observed() {
   OBSERVED_INPUTS=$TARGET_HASH
   sha256_file "$MISSION_TRACE" || return 1
   OBSERVED_TRACE=$SHA_VALUE
-  sha256_file "$RUNTIME_ROOT/toolchain.lock.json" || return 1
+  sha256_file "$TOOLCHAIN_LOCK_PATH" || return 1
   OBSERVED_TOOLCHAIN=$SHA_VALUE
   git_head || return 1
 }
@@ -744,7 +1623,7 @@ write_status_candidate() {
   STATUS_DEST=$2
   jq -n --slurpfile progress "$STATUS_PROGRESS" \
     '{mode:"status",progress:$progress[0]}' >"$MISSION_WORK/status-envelope.json" || return 1
-  jq -r -e -f "$RUNTIME_ROOT/recipes/progress.jq" \
+  jq -r -e -f "$PROGRESS_RECIPE_PATH" \
     "$MISSION_WORK/status-envelope.json" >"$STATUS_DEST" 2>/dev/null
 }
 
@@ -781,13 +1660,11 @@ doctor_tools() {
 
 doctor_models() {
   test "$#" -eq 0 || { usage >&2; exit "$EX_USAGE"; }
+  runtime_validate_source_contract
   require_command jq
-  LOCK=$RUNTIME_ROOT/toolchain.lock.json
-  CONFIG=$RUNTIME_ROOT/opencode.json
-  test -f "$LOCK" && test -f "$CONFIG" && ! test -L "$LOCK" && ! test -L "$CONFIG" || \
-    fail "$EX_UNAVAILABLE" model.config_unavailable missing_regular_file
-  jq empty "$LOCK" "$CONFIG" >/dev/null 2>&1 || \
-    fail "$EX_DATAERR" model.config_invalid malformed_json
+  runtime_resolve_global_assets
+  LOCK=$TOOLCHAIN_LOCK_PATH
+  CONFIG=$OPENCODE_CONFIG_PATH
   if ! jq -e '
     .opencode_version == "1.18.3"
     and .model_aliases.lead == "zai/glm-5.2"
@@ -825,7 +1702,7 @@ mission_init() {
   test -n "$INIT_GOAL" || fail "$EX_DATAERR" mission.goal_invalid empty
   hash_target "$INIT_TARGET" || fail "$EX_DATAERR" mission.target_invalid unresolved_or_symlink
   INIT_INPUTS_HASH=$TARGET_HASH
-  sha256_file "$RUNTIME_ROOT/toolchain.lock.json" || \
+  sha256_file "$TOOLCHAIN_LOCK_PATH" || \
     fail "$EX_UNAVAILABLE" mission.toolchain_unavailable hash_failed
   INIT_TOOLCHAIN_HASH=$SHA_VALUE
   git_head || fail "$EX_UNAVAILABLE" mission.git_state_unavailable read_failed
@@ -938,7 +1815,7 @@ mission_checkpoint() {
       observed_fingerprints:{trace:$trace,inputs:$inputs,git_head:$git,toolchain:$toolchain}
     }
   ' >"$MISSION_WORK/transition.json" || fail "$EX_UNAVAILABLE" mission.write_failed transition_envelope
-  jq -e -f "$RUNTIME_ROOT/recipes/progress.jq" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
+  jq -e -f "$PROGRESS_RECIPE_PATH" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
     fail "$EX_DATAERR" progress.transition.invalid candidate
   write_status_candidate "$CHECKPOINT_TMP" "$MISSION_DIR/.sensai-status.$$.md" || \
     fail "$EX_DATAERR" progress.status_invalid candidate
@@ -1022,7 +1899,7 @@ mission_resume() {
       }
     ' >"$MISSION_WORK/resume-envelope.json" || \
     fail "$EX_UNAVAILABLE" mission.write_failed resume_envelope
-  jq -e -f "$RUNTIME_ROOT/recipes/progress.jq" "$MISSION_WORK/resume-envelope.json" \
+  jq -e -f "$PROGRESS_RECIPE_PATH" "$MISSION_WORK/resume-envelope.json" \
     >"$MISSION_WORK/resume-projection.json" 2>/dev/null || \
     fail "$EX_TEMPFAIL" progress.resume.invalid envelope
   ACTIVE_UPDATED=$(jq -r '.updated_at' "$MISSION_PROGRESS") || fail "$EX_DATAERR" progress.resume.corrupt updated_at
@@ -1052,7 +1929,7 @@ mission_resume() {
       observed_fingerprints:{trace:$trace,inputs:$inputs,git_head:$git,toolchain:$toolchain}
     }
   ' >"$MISSION_WORK/transition.json" || fail "$EX_UNAVAILABLE" mission.write_failed transition_envelope
-  jq -e -f "$RUNTIME_ROOT/recipes/progress.jq" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
+  jq -e -f "$PROGRESS_RECIPE_PATH" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
     fail "$EX_DATAERR" progress.transition.invalid resume_candidate
   write_status_candidate "$RESUME_TMP" "$MISSION_DIR/.sensai-status.$$.md" || \
     fail "$EX_DATAERR" progress.status_invalid resume_candidate
@@ -1100,7 +1977,7 @@ case "${1:-}" in
     ;;
   install)
     shift
-    package_deploy install "$@"
+    package_install_global "$@"
     ;;
   mission)
     test "$#" -ge 2 || { usage >&2; exit "$EX_USAGE"; }

@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# noqa: SIZE_OK - OpenCode load selector의 공유 격리 환경, fingerprint, projection, receipt orchestration을 한 흐름에서 검증한다.
+
+. "$SCRIPT_DIR/cases/opencode-load/global-install.sh"
+
 opencode_load_fingerprint_tree() {
   OPENCODE_LOAD_TREE_ROOT=$1
   OPENCODE_LOAD_TREE_LABEL=$2
@@ -361,19 +365,18 @@ case_opencode_load() {
     sed "s#^$OPENCODE_LOAD_STAGE/##" | LC_ALL=C sort \
     >"$RUN_TMP/opencode-load-stage.leaves" || return 70
   if cmp -s "$SOURCE_ROOT/manifest.txt" "$RUN_TMP/opencode-load-stage.leaves"; then
-    assert_record opencode-load.stage_exact 0 'manifest 37개 leaf를 정확히 투영했다' || true
+    assert_record opencode-load.stage_exact 0 'config manifest 36개 leaf를 정확히 투영했다' || true
   else
     assert_record opencode-load.stage_exact 1 'stage leaf가 manifest exact-set과 다르다' || true
   fi
   assert_file opencode-load.runtime_agents "$OPENCODE_LOAD_STAGE/AGENTS.md" || true
-  assert_file opencode-load.installed_cli "$OPENCODE_LOAD_STAGE/bin/sensai" || true
-  if test -x "$OPENCODE_LOAD_STAGE/bin/sensai" && \
-     cmp -s "$SOURCE_ROOT/bin/sensai" "$OPENCODE_LOAD_STAGE/bin/sensai"; then
-    assert_record opencode-load.installed_cli_exact 0 \
-      '설치 CLI가 source와 byte-identical이며 실행 가능하다' || true
+  if test ! -e "$OPENCODE_LOAD_STAGE/bin/sensai" && \
+     ! test -L "$OPENCODE_LOAD_STAGE/bin/sensai"; then
+    assert_record opencode-load.stage_no_cli 0 \
+      'config-only stage에 외부 설치 CLI가 포함되지 않았다' || true
   else
-    assert_record opencode-load.installed_cli_exact 1 \
-      '설치 CLI byte 또는 실행 mode가 다르다' || true
+    assert_record opencode-load.stage_no_cli 1 \
+      'config-only stage에 CLI가 포함됐다' || true
   fi
 
   if test "${SENSAI_TEST_OPENCODE_INHERITED_SENTINEL:-0}" = 1; then
@@ -502,10 +505,7 @@ case_opencode_load() {
 
   OPENCODE_LOAD_STAGE_PAYLOAD_OK=0
   while IFS= read -r OPENCODE_LOAD_STAGE_ENTRY; do
-    case "$OPENCODE_LOAD_STAGE_ENTRY" in
-      bin/sensai) OPENCODE_LOAD_STAGE_SOURCE=$SOURCE_ROOT/bin/sensai ;;
-      *) OPENCODE_LOAD_STAGE_SOURCE=$SOURCE_ROOT/output/$OPENCODE_LOAD_STAGE_ENTRY ;;
-    esac
+    OPENCODE_LOAD_STAGE_SOURCE=$SOURCE_ROOT/output/$OPENCODE_LOAD_STAGE_ENTRY
     if ! cmp -s "$OPENCODE_LOAD_STAGE_SOURCE" \
          "$OPENCODE_LOAD_STAGE/$OPENCODE_LOAD_STAGE_ENTRY"; then
       OPENCODE_LOAD_STAGE_PAYLOAD_OK=1
@@ -514,7 +514,7 @@ case_opencode_load() {
   done <"$SOURCE_ROOT/manifest.txt"
   if test "$OPENCODE_LOAD_STAGE_PAYLOAD_OK" -eq 0; then
     assert_record opencode-load.stage_payload_unchanged 0 \
-      'manifest의 37개 staged payload byte가 debug 뒤에도 같다' || true
+      'manifest의 36개 staged config payload byte가 debug 뒤에도 같다' || true
   else
     assert_record opencode-load.stage_payload_unchanged 1 \
       'manifest의 staged payload byte가 debug 과정에서 바뀌었다' || true
@@ -534,6 +534,9 @@ case_opencode_load() {
     assert_record opencode-load.stage_known_initialization 1 \
       'disposable config에 알 수 없는 추가 leaf가 생겼다' || true
   fi
+
+  opencode_load_global_install_integration || return 70
+
   opencode_load_fingerprint_source after || return 70
   OPENCODE_LOAD_SOURCE_AFTER_SHA=$OPENCODE_LOAD_SOURCE_SHA
   OPENCODE_LOAD_SOURCE_OUTPUT_AFTER_SHA=$OPENCODE_LOAD_SOURCE_OUTPUT_SHA
@@ -583,6 +586,14 @@ case_opencode_load() {
       opencode_version:$version,
       verified:{
         manifest_projection:true,
+        config_manifest_leaf_count:36,
+        global_install:true,
+        installed_cli_external:true,
+        absolute_and_path_invocation:true,
+        project_global_file_overlay:true,
+        present_invalid_fail_closed:true,
+        ambient_output_ignored:true,
+        global_debug_projection:true,
         runtime_agents_present:true,
         agents_exact:2,
         nested_commands_exact:9,

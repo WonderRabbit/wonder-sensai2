@@ -10,14 +10,16 @@ subtask: false
 
 ## F0 시작 선행조건
 
-결정적 파일 초기화는 대상 저장소에서 `"$OPENCODE_CONFIG_DIR/bin/sensai" mission init <mission-id> <target-relative-path> <goal>`을 호출해 수행한다. `OPENCODE_CONFIG_DIR`가 비어 있거나 절대 경로가 아니거나 설치된 `bin/sensai`가 정규 실행 파일이 아니면 중단한다. 인자는 데이터로만 전달하고 사용자가 준 문자열을 다시 셸 코드로 조립하지 않는다. `CLI`가 `exit` `0`과 `INITIALIZED` 영수증을 반환하기 전에는 모델이 같은 파일을 대신 만들지 않는다.
+결정적 파일 초기화는 대상 저장소에서 `"$HOME/.local/bin/sensai" mission init <mission-id> <target-relative-path> <goal>`을 호출해 수행한다. `HOME`이 비어 있거나 절대 경로가 아니면 중단한다. 정확한 `"$HOME/.local/bin/sensai"`가 정규 실행 파일이 아니거나 `CLI`가 설치된 `runtime root`를 검증하지 못하면 중단한다. 인자는 데이터로만 전달하고 사용자가 준 문자열을 다시 셸 코드로 조립하지 않는다. `CLI`가 `exit` `0`과 `INITIALIZED` 영수증을 반환하기 전에는 모델이 같은 파일을 대신 만들지 않는다.
+
+미션에 필요한 schema와 recipe의 경로를 모델이 직접 조립하거나 읽어 검증하지 마라. 설치된 `CLI`가 각 파일을 대상 프로젝트의 `.sensai/{schemas,recipes}`에서 먼저 선택하고, 해당 project file이 없을 때만 전역 OpenCode config의 같은 파일로 fallback한다. project file이 존재하지만 invalid이면 전역 파일로 우회하지 않고 fail closed한다. 모델은 이 선택과 검증을 다시 구현하지 말고 `mission` 명령이 성공한 뒤 반환한 영수증 또는 JSON projection만 후속 판단에 사용한다.
 
 다음 조건을 모두 통과하기 전에는 미션 파일을 쓰지 마라.
 
 - 대상 경로는 저장소 상대 경로이고 빈 요소, `..`, 절대 경로와 심볼릭 링크 이탈이 없어야 한다.
 - 같은 `<mission-id>`의 `progress.json` 또는 미션 잠금이 이미 있으면 새 미션으로 덮어쓰지 말고 `mission-already-exists` 또는 `progress.resume.concurrent`로 중단한 뒤 `/sensai/resume`을 안내한다.
 - `trace.json`, 입력 집합, 현재 `git HEAD`와 `toolchain`의 실제 SHA-256을 결정적 도구로 계산한다. 파일이 없거나 해시 계산이 실패하면 영 문자열이나 추정값으로 채우지 않는다.
-- `output/schemas/progress.schema.json`과 `output/recipes/progress.jq`를 실제로 읽고 검증할 수 있어야 한다. 검증기 부재나 비정상 종료를 지침 판단으로 우회하지 않는다.
+- 설치된 `CLI`가 선택한 progress schema와 recipe의 검증이 성공해야 한다. 검증기 부재나 비정상 종료를 지침 판단으로 우회하지 않는다.
 
 같은 미션의 정규 상태는 `sensai-analysis-lead` 한 명만 직렬로 쓴다. 미션 루트의 전용 잠금을 원자적으로 획득하지 못하면 `progress.resume.concurrent`로 거부하고, 기존 잠금을 훔치거나 제거하지 마라. 잠금 소유자, 기준 `revision`과 기준 `progress.json` 해시가 모두 현재 미션과 일치할 때만 진행한다.
 
@@ -53,11 +55,11 @@ subtask: false
 1. 검증된 `trace.json`과 산출물 해시를 먼저 확정한다.
 2. 기존 `progress.json` 해시와 `revision`을 다시 읽어 잠금의 기준값과 비교한다.
 3. 후보 `progress.json`은 이전 `revision + 1`, `precondition_fingerprints.previous_progress`와 현재 `trace`·`inputs`·`git_head`·`toolchain` 해시를 담는다.
-4. 후보를 `progress schema`와 `progress.jq` `transition` 모드로 검증한다.
-5. 검증 성공 뒤에만 같은 미션 디렉터리의 임시 파일을 원자적 rename하여 `progress.json`을 교체한다. 부분 파일이나 미검증 후보를 정규 경로에 남기지 않는다.
-6. `progress.jq` `status` 모드의 출력으로 `status.md`를 생성하고, 마지막으로 세션 todo를 갱신한다.
+4. 설치된 `CLI`가 선택한 progress schema와 recipe의 `transition` 검증을 통과한 결과만 인정한다.
+5. `CLI`가 검증 성공 뒤 같은 미션 디렉터리의 임시 파일을 원자적 rename하여 `progress.json`을 교체한 성공 영수증을 확인한다. 부분 파일이나 미검증 후보를 모델이 정규 경로에 남기지 않는다.
+6. `CLI`가 생성한 검증된 `status.md`와 반환 결과를 사용하고, 마지막으로 세션 todo를 갱신한다.
 
-검증된 후보 `progress`를 반영할 때는 `"$OPENCODE_CONFIG_DIR/bin/sensai" mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>`을 사용한다. `exit` `75`는 다른 작성자가 먼저 갱신했거나 잠금이 있다는 뜻이므로 덮어쓰기나 자동 재시도를 하지 않는다.
+검증된 후보 `progress`를 반영할 때는 `"$HOME/.local/bin/sensai" mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>`을 사용한다. `exit` `75`는 다른 작성자가 먼저 갱신했거나 잠금이 있다는 뜻이므로 덮어쓰기나 자동 재시도를 하지 않는다.
 
 진실 우선순위는 검증된 `trace.json` > 검증된 `progress.json` > 파생 `status.md` > 세션 `todo`다. `status.md`나 `todo`를 원장 또는 `progress`보다 먼저 쓰거나, 서로 다를 때 하위 뷰를 진실로 채택하지 마라.
 

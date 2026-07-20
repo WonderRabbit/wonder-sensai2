@@ -1,7 +1,6 @@
 AGENTS.md
 agents/sensai-analysis-lead.md
 agents/sensai-evidence-peer.md
-bin/sensai
 commands/sensai/analyze-business.md
 commands/sensai/analyze.md
 commands/sensai/change-design.md

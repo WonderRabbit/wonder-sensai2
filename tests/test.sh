@@ -65,7 +65,7 @@ selectors:
   expect-fail command-design-without-binding
   expect-fail stale-resume-hash
   expect-fail wrong-yq-product
-  expect-fail existing-install-target
+  expect-fail managed-install-conflict
   expect-fail staged-byte-drift
   expect-fail asis-golden-drift
   expect-fail conflict-hidden-by-deliverable
@@ -1027,24 +1027,52 @@ run_expected_wrong_yq_product() {
   assert_eq expect.wrong_yq_no_config_write "$EXPECT_YQ_CONFIG_HASH" "$TOOLING_SHA256" || true
 }
 
-run_expected_existing_install_target() {
+run_expected_managed_install_conflict() {
   CASE_TOTAL=$((CASE_TOTAL + 1))
-  EXPECT_INSTALL_ROOT=$RUN_TMP/expect-existing-install
-  mkdir -p "$EXPECT_INSTALL_ROOT" || return 70
-  EXPECT_INSTALL_ROOT=$(CDPATH= cd -- "$EXPECT_INSTALL_ROOT" 2>/dev/null && pwd -P) || return 70
-  EXPECT_INSTALL_TARGET=$EXPECT_INSTALL_ROOT/target
-  packaging_run_existing_target_probe "$EXPECT_INSTALL_TARGET" \
-    "$RUN_TMP/expect-existing-install.out" "$RUN_TMP/expect-existing-install.err" || return 70
-  evidence_log_command expected-existing-install-target \
-    './bin/sensai install <existing-temp-target>' "$PACKAGING_EXISTING_RC"
-  assert_eq expect.existing_install_exit 73 "$PACKAGING_EXISTING_RC" || true
-  assert_eq expect.existing_install_preserved "$PACKAGING_MARKER_BEFORE" "$PACKAGING_MARKER_AFTER" || true
-  if rg -q --no-config '^오류 reason=package\.target_exists detail=/' \
-       "$RUN_TMP/expect-existing-install.err" && \
-     test "$(find "$EXPECT_INSTALL_TARGET" -mindepth 1 ! -type d | wc -l | tr -d ' ')" -eq 1; then
-    assert_record expect.existing_install_reason 0 '기존 설치 대상의 semantic failure만 인정했다' || true
+  EXPECT_INSTALL_HOME=$RUN_TMP/expect-managed-install-conflict-home
+  EXPECT_INSTALL_CONFIG=$EXPECT_INSTALL_HOME/.config/opencode
+  EXPECT_INSTALL_CLI=$EXPECT_INSTALL_HOME/.local/bin/sensai
+  mkdir -p "$EXPECT_INSTALL_CONFIG" "$EXPECT_INSTALL_HOME/.local/bin" || return 70
+  EXPECT_INSTALL_HOME=$(CDPATH= cd -- "$EXPECT_INSTALL_HOME" 2>/dev/null && pwd -P) || return 70
+  EXPECT_INSTALL_CONFIG=$EXPECT_INSTALL_HOME/.config/opencode
+  EXPECT_INSTALL_CLI=$EXPECT_INSTALL_HOME/.local/bin/sensai
+  printf '%s\n' '보존해야 하는 비관리 파일' >"$EXPECT_INSTALL_CONFIG/unmanaged.txt" || return 70
+  printf '%s\n' 'source와 다른 managed bytes' >"$EXPECT_INSTALL_CONFIG/AGENTS.md" || return 70
+  tooling_sha256_file "$EXPECT_INSTALL_CONFIG/unmanaged.txt" || return 70
+  EXPECT_INSTALL_UNMANAGED_BEFORE=$TOOLING_SHA256
+  tooling_sha256_file "$EXPECT_INSTALL_CONFIG/AGENTS.md" || return 70
+  EXPECT_INSTALL_MANAGED_BEFORE=$TOOLING_SHA256
+  set +e
+  env -u OPENCODE_CONFIG_DIR -u XDG_CONFIG_HOME HOME="$EXPECT_INSTALL_HOME" \
+    "$SOURCE_ROOT/bin/sensai" install \
+    >"$RUN_TMP/expect-managed-install-conflict.out" \
+    2>"$RUN_TMP/expect-managed-install-conflict.err"
+  EXPECT_INSTALL_RC=$?
+  tooling_sha256_file "$EXPECT_INSTALL_CONFIG/unmanaged.txt" || return 70
+  EXPECT_INSTALL_UNMANAGED_AFTER=$TOOLING_SHA256
+  tooling_sha256_file "$EXPECT_INSTALL_CONFIG/AGENTS.md" || return 70
+  EXPECT_INSTALL_MANAGED_AFTER=$TOOLING_SHA256
+  EXPECT_INSTALL_FILES=$(find "$EXPECT_INSTALL_CONFIG" -type f -print | wc -l | tr -d ' ') || return 70
+  EXPECT_INSTALL_REMAINDER=$(find "$EXPECT_INSTALL_HOME" \
+    \( -name '.sensai-install.*' -o -name '.sensai-install-lock' \) \
+    -print | wc -l | tr -d ' ') || return 70
+  evidence_log_command expected-managed-install-conflict \
+    'HOME=<isolated-home> ./bin/sensai install' "$EXPECT_INSTALL_RC"
+  assert_eq expect.managed_install_conflict_exit 73 "$EXPECT_INSTALL_RC" || true
+  assert_eq expect.managed_install_unmanaged_preserved \
+    "$EXPECT_INSTALL_UNMANAGED_BEFORE" "$EXPECT_INSTALL_UNMANAGED_AFTER" || true
+  assert_eq expect.managed_install_conflict_preserved \
+    "$EXPECT_INSTALL_MANAGED_BEFORE" "$EXPECT_INSTALL_MANAGED_AFTER" || true
+  if rg -q --no-config '^오류 reason=package\.managed_conflict detail=AGENTS\.md$' \
+       "$RUN_TMP/expect-managed-install-conflict.err" && \
+     test "$EXPECT_INSTALL_FILES" -eq 2 && \
+     test ! -e "$EXPECT_INSTALL_CLI" && ! test -L "$EXPECT_INSTALL_CLI" && \
+     test "$EXPECT_INSTALL_REMAINDER" -eq 0; then
+    assert_record expect.managed_install_conflict_reason 0 \
+      'differing managed leaf를 exit 73으로 거부하고 target write를 남기지 않았다' || true
   else
-    assert_record expect.existing_install_reason 1 '기존 설치 대상 reason 또는 보존 계약 위반' || true
+    assert_record expect.managed_install_conflict_reason 1 \
+      'managed conflict reason, zero-write 또는 cleanup 계약 위반' || true
   fi
 }
 
@@ -1212,7 +1240,7 @@ case "$SELECTOR" in
       command-design-without-binding) run_expected_command_design_without_binding; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
       stale-resume-hash) run_expected_stale_resume_hash; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
       wrong-yq-product) run_expected_wrong_yq_product; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
-      existing-install-target) run_expected_existing_install_target; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
+      managed-install-conflict) run_expected_managed_install_conflict; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
       staged-byte-drift) run_expected_staged_byte_drift; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
       asis-golden-drift) run_expected_asis_golden_drift; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
       conflict-hidden-by-deliverable) run_expected_conflict_hidden_by_deliverable; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;

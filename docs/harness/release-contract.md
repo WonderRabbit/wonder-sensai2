@@ -11,21 +11,23 @@
 
 release archive는 첫 label이 실제 성립할 때만 만들 수 있다. archive나 Markdown에 PASS 문자열을 적는 것 자체는 증거가 아니다.
 
-`LOCAL_IMPLEMENTATION_PASS`는 설치 CLI, core와 AS-IS 결정적 경로까지의 로컬 구현 상태다. `sensai-dataflow-chart`, `sensai-user-story`, `sensai-requirement-analyze`, `sensai-change-design`, `sensai-test-scenario`는 `VALUE_PROVEN` 전 exact deny이며 live F3-F5 성공은 `MODEL_ADMISSION_UNVERIFIED` 축에 남는다.
+`LOCAL_IMPLEMENTATION_PASS`는 36개 managed config leaf의 기존 global root 설치, 별도 CLI, project/global runtime overlay, core와 AS-IS 결정적 경로까지의 로컬 구현 상태다. `sensai-dataflow-chart`, `sensai-user-story`, `sensai-requirement-analyze`, `sensai-change-design`, `sensai-test-scenario`는 `VALUE_PROVEN` 전 exact deny이며 live F3-F5 성공은 `MODEL_ADMISSION_UNVERIFIED` 축에 남는다.
 
 ## local release 후보
 
 local release 후보는 다음을 포함한다.
 
-- root literal manifest가 가리키는 `output/` source payload
+- root literal manifest가 가리키는 `output/` source payload 36개
 - 한국어 사람용 설명·표시명과 원형이 보존된 기계 key/ID/path/enum/문법
-- repo-side installer와 사용 문서
+- repo-side installer와 사용 문서; archive 안의 `bin/sensai`는 설치 후 `$HOME/.local/bin/sensai`가 된다.
 - OpenCode `1.18.3`와 tool identity 기록
 - `output/` source/stage payload exact-set, checksum, normalized archive metadata
+- existing global config의 unmanaged 보존, byte-equal no-op, conflict refusal와 rollback receipt
+- project `.sensai/{schemas,recipes}` absent-only override/fallback와 installed CLI provenance receipt
 - current preflight와 cleanup receipt
 - 모델 및 Windows 외부 상태
 
-secret, raw model transcript, `.omo`, git metadata, runtime mission output, fixture 실행 상태, 외부 symlink target은 포함하지 않는다.
+secret, raw model transcript, `.omo`, git metadata, runtime mission output, fixture 실행 상태, 외부 symlink target, 사용자 global config의 unmanaged content는 포함하지 않는다.
 
 ## Windows 네이티브 테스트 경계
 
@@ -43,7 +45,7 @@ secret, raw model transcript, `.omo`, git metadata, runtime mission output, fixt
 
 ## publication 금지
 
-승인되지 않은 tag, PR, upload, package registry publication, 실제 전역 OpenCode 설치를 수행하지 않는다. local archive도 publish가 아니며 source와 receipt hash로만 식별한다.
+승인되지 않은 tag, PR, upload, package registry publication을 수행하지 않는다. release acceptance는 실제 사용자 HOME을 mutation하지 않고 disposable HOME에서 global install topology를 검증한다. local archive도 publish가 아니며 source와 receipt hash로만 식별한다.
 
 ## 실패와 퇴출
 

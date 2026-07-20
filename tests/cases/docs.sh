@@ -1,6 +1,6 @@
 #!/bin/sh
 
-DOCS_EXPECTED_AGENTS_SHA256=b6456a2905e6810a914b47564c8aab14d171ed66446ba51defa9926370ae0b64
+DOCS_EXPECTED_AGENTS_SHA256=fccf5723eeeff649553c624aa7c2c068d9656128f89bb6be41e9e9981344bb80
 
 docs_assert_contains() {
   DOCS_ASSERT_ID=$1
@@ -587,7 +587,6 @@ case_docs() {
   assert_file docs.todo "$SOURCE_ROOT/plan/todo_list.md" || true
   assert_file docs.product_contract "$SOURCE_ROOT/docs/PROD.md" || true
   assert_file docs.mapping_contract "$SOURCE_ROOT/docs/r4-mapping.md" || true
-
   tooling_sha256_file "$SOURCE_ROOT/AGENTS.md" || return 70
   if test "$TOOLING_SHA256" = "$DOCS_EXPECTED_AGENTS_SHA256"; then
     assert_record docs.agents_hash 0 "sha256=$TOOLING_SHA256" || true
@@ -612,7 +611,6 @@ case_docs() {
     "$SOURCE_ROOT/plan/prd" || return 70
   docs_assert_absent docs.no_bare_planning_filename 'operating-model\.md' "$SOURCE_ROOT/plan/prd" || return 70
   docs_assert_absent docs.no_workflow_principle_count_drift '본 ([0-689]|[1-9][0-9]+)원칙' "$SOURCE_ROOT/plan/prd/O6-workflow-orchestration.md" || return 70
-
   docs_assert_contains docs.alias_t2_program 'T2 program/charter → `T2-research-program\.md`' "$SOURCE_ROOT/README.md"
   docs_assert_contains docs.alias_t2_method 'T2 experiment methodology → `T2-methodology\.md`' "$SOURCE_ROOT/README.md"
   docs_assert_contains docs.alias_r3_cli 'R3 CLI catalog → `R3-cli-tools\.md`' "$SOURCE_ROOT/README.md"
@@ -660,7 +658,6 @@ case_docs() {
   docs_assert_contains docs.root_agents_fixture_contract 'Fixture corpus와 검증 계약' "$SOURCE_ROOT/AGENTS.md"
   docs_assert_contains docs.root_agents_fixture_counts '물리 leaf 35개.*37개' "$SOURCE_ROOT/AGENTS.md"
   docs_assert_contains docs.root_agents_cases 'happy 14개.*adversarial 14개' "$SOURCE_ROOT/AGENTS.md"
-  docs_assert_contains docs.output_topology '`output/`.*유일한 canonical runtime root' "$SOURCE_ROOT/README.md"
   docs_assert_contains docs.output_language 'output language:.*한국어' "$SOURCE_ROOT/README.md"
   docs_assert_contains docs.ollama_placeholder_contract '`apiKey`는 `ollama`로 고정.*비밀 아닌 자리표시자.*실제 자격 증명이 아니다' "$SOURCE_ROOT/docs/harness/runtime-contract.md"
 

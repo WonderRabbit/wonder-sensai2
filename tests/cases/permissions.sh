@@ -142,10 +142,10 @@ permissions_run_projection() {
     'fd' 'fd --print0 src' 'rg --json --no-config 주문 src' \
     'sg --json -p call src' 'jq -e . trace.json' 'yq -o=json . openapi.yaml' \
     'mdq #{2} README.md' 'mmdc --input flow.mmd --output docs/analysis/missions/M-001/flow.svg' \
-    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission init mission-001 src 목표' \
-    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission checkpoint mission-001 candidate.json 1 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
-    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission resume mission-001' \
-    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission status mission-001'; do
+    '"$HOME/.local/bin/sensai" mission init mission-001 src 목표' \
+    '"$HOME/.local/bin/sensai" mission checkpoint mission-001 candidate.json 1 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+    '"$HOME/.local/bin/sensai" mission resume mission-001' \
+    '"$HOME/.local/bin/sensai" mission status mission-001'; do
     permissions_record_probe projection bash "$PERMISSIONS_CONFIG" '.permission.bash' \
       "$PERMISSIONS_ALLOWED_COMMAND" allow || return 70
   done
@@ -154,6 +154,8 @@ permissions_run_projection() {
     "$PERMISSIONS_PROBE_JSONL") || return 70
   assert_eq permissions.ordered_projection 0 "$PERMISSIONS_PROJECTION_FAILED" || true
 
+  PERMISSIONS_OLD_CONFIG_COMMAND='"$OPENCODE_CONFIG_DIR'
+  PERMISSIONS_OLD_CONFIG_COMMAND=$PERMISSIONS_OLD_CONFIG_COMMAND'/bin/sensai" mission status mission-001'
   for PERMISSIONS_BYPASS_COMMAND in \
     'grep 주문 src' 'find src -type f' 'cat README.md' 'ls src' \
     'Select-String 주문 src' 'gci src' 'findstr 주문 src' 'exec rg 주문 src' \
@@ -167,10 +169,17 @@ permissions_run_projection() {
     'rg --json 값 .env' 'rg --json 값 keys/id_rsa_prod' \
     'rg --json 값 home/.config/opencode/opencode.json' \
     './bin/sensai mission init mission-001 src 목표' \
-    '"$OPENCODE_CONFIG_DIR/bin/sensai" help' \
-    '"$OPENCODE_CONFIG_DIR/bin/sensai" doctor tools' \
-    '"$OPENCODE_CONFIG_DIR/bin/sensai" stage /tmp/target' \
-    '"$OPENCODE_CONFIG_DIR/bin/other" mission status mission-001'; do
+    'sensai mission init mission-001 src 목표' \
+    "$PERMISSIONS_OLD_CONFIG_COMMAND" \
+    '"$HOME/.local/bin/sensai" help' \
+    '"$HOME/.local/bin/sensai" doctor tools' \
+    '"$HOME/.local/bin/sensai" stage /tmp/target' \
+    '"$HOME/.local/bin/sensai" install' \
+    '"$HOME/.local/bin/sensai" mission status mission-001 | jq .' \
+    '"$HOME/.local/bin/sensai" mission status mission-001 > status.md' \
+    '"$HOME/.local/bin/sensai" mission status $(cat .env)' \
+    '"$HOME/.local/bin/sensai" mission status home/.config/opencode/auth.json' \
+    '"$HOME/.local/bin/other" mission status mission-001'; do
     permissions_record_probe bypass bash "$PERMISSIONS_CONFIG" '.permission.bash' \
       "$PERMISSIONS_BYPASS_COMMAND" deny || return 70
   done

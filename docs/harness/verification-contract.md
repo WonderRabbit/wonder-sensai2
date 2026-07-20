@@ -34,12 +34,15 @@ macOS deterministic PASS는 Windows 영수증 없이 진행하고 완성할 수 
 `LOCAL_IMPLEMENTATION_PASS`는 다음이 모두 현재 workspace fingerprint에서 통과할 때만 허용한다.
 
 - source-owned Markdown과 상대 링크
-- `output/` relative literal agent 2 / command 9 / skill 15 exact-set와 설치 CLI를 포함한 37-leaf manifest target
+- `output/` relative literal agent 2 / command 9 / skill 15 exact-set와 36-leaf managed config manifest
+- 기존 global config의 absent install, byte-equal no-op, differing/symlink/directory pre-write conflict와 unmanaged 보존
+- config 밖 `$HOME/.local/bin/sensai` exact executable, absolute/PATH/source 호출 동등성
+- project `.sensai/{schemas,recipes}`의 file-level 우선순위, absent-only global fallback, present-invalid fail-closed와 provenance
 - output 사람용 문구·표시명 한국어와 기계 식별자·문법 원형 보존
 - trace/progress schema와 valid/invalid fixture
 - jq validator와 target mutation
 - permissions와 banned-runtime 검사
-- manifest, stage, install transaction
+- manifest, config-only stage, existing-global install와 two-target rollback transaction
 - AS-IS/TO-BE deterministic projection과 render
 - continuity, hard gate, single-writer, fresh-process resume
 - disposable OpenCode `1.18.3` semantic load
@@ -56,7 +59,9 @@ macOS deterministic PASS는 Windows 영수증 없이 진행하고 완성할 수 
 - `platform_drift`: macOS와 Windows 상태를 하나의 boolean로 축약하지 않는다.
 - `config_merge`: inherited sentinel과 duplicate surface를 탐지한다.
 - `debug_mutation`: source/global 전후 hash와 disposable tree 변화를 기록한다.
-- `output_root_drift`: root runtime duplicate, `.opencode/`, output 누락, repo-side asset의 manifest 혼입을 거부한다.
+- `output_root_drift`: root runtime duplicate, `.opencode/`, output 누락, repo-side asset의 config manifest 혼입과 runtime `output/` fallback을 거부한다.
+- `managed_conflict`: differing regular file, symlink, directory, nonregular leaf와 CLI 충돌이 첫 write 전에 exit `73`인지 확인한다.
+- `overlay_fallback`: project 파일이 없을 때만 global file을 선택하고 present-invalid project 파일이 global로 우회하지 않는지 확인한다.
 
 ## manual QA
 

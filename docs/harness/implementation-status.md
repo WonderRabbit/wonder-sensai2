@@ -7,7 +7,7 @@
 | 축 | 상태 | 현재 증거 |
 | --- | --- | --- |
 | contract freeze | `COMPLETE` | 제품, mapping, runtime, verification, release 계약 존재 |
-| `LOCAL_IMPLEMENTATION` | `PASS` | 53개 결정적 preflight가 current fingerprint에서 통과 |
+| `LOCAL_IMPLEMENTATION` | `PASS` | managed global install, 외부 CLI, runtime overlay와 결정적 preflight가 current fingerprint에서 통과 |
 | `MODEL_ADMISSION` | `UNVERIFIED` | live response/tool-use 호출 없음 |
 | `TUI/LIVE_DELEGATION` | `UNVERIFIED` | 실제 session receipt 없음 |
 | `WINDOWS_NATIVE` | `TEST_UNAVAILABLE` | 현재 환경에 Windows 호스트 없음 |
@@ -16,7 +16,10 @@
 
 ## 동결된 목표
 
-- canonical `output/` runtime source
+- canonical `output/` packaging source
+- `output/`은 36개 config leaf의 packaging source이며 runtime fallback이 아님
+- existing `$HOME/.config/opencode` managed install과 `$HOME/.local/bin/sensai`
+- project `.sensai/{schemas,recipes}` file-level override 후 global absent-only fallback
 - OpenCode `1.18.3`
 - lead `zai/glm-5.2`, peer `sensai-ollama/qwen3.5:9b`는 discovery/load 값만
 - exactly 2 agents, 9 commands, 15 skills
@@ -32,7 +35,9 @@
 - 실행 가능한 fail-closed `tests/test.sh`
 - root fixture/golden corpus와 exact-set/hash/14+14 oracle
 - `output/AGENTS.md`와 처음에는 byte-identical로 이동한 뒤 사람용 표시명만 한국어화한 `output/opencode.json`
-- output 상대 2/9/15/2/5와 설치 CLI를 포함한 37-leaf target catalog
+- output 상대 2/9/15/2/5의 36-leaf config catalog와 별도 설치 CLI
+- absent managed leaf 설치, byte-equal no-op, conflict pre-write 거부, unmanaged 보존과 rollback journal
+- absolute/PATH/source executable 해석과 project/global asset provenance; present-invalid override fail-closed
 - output 사람용 문구·표시명 한국어 계약과 한 단어·짧은 문장·제목·목록 주입 거부 로컬 oracle; 독립 재검증은 `PENDING`
 
 ## 외부 또는 후속 단계에 남은 증거

@@ -1,4 +1,5 @@
 #!/bin/sh
+# noqa: SIZE_OK - tests/test.sh selector 계약은 shared RUN_TMP/EVIDENCE_DIR receipt를 이 단일 harness에서 집계한다.
 
 continuity_sha() {
   tooling_sha256_file "$1" || return 70
@@ -27,6 +28,462 @@ continuity_project_init() {
   git -C "$CONTINUITY_PROJECT" config user.name sensai-test || return 70
   git -C "$CONTINUITY_PROJECT" add src/input.txt || return 70
   git -C "$CONTINUITY_PROJECT" commit -qm 'test: 고정 입력' || return 70
+}
+
+continuity_runtime_config_case() {
+  CONTINUITY_RUNTIME_CASE_CONFIG=$CONTINUITY_RUNTIME/config-$1
+  mkdir -p "$CONTINUITY_RUNTIME_CASE_CONFIG" || return 70
+  cp -R "$SOURCE_ROOT/output/." "$CONTINUITY_RUNTIME_CASE_CONFIG" || return 70
+}
+
+continuity_runtime_installed_run() {
+  CONTINUITY_RUNTIME_RUN_NAME=$1
+  CONTINUITY_RUNTIME_RUN_CONFIG=$2
+  CONTINUITY_RUNTIME_RUN_PROJECT=$3
+  shift 3
+  set +e
+  (
+    cd "$CONTINUITY_RUNTIME_NEUTRAL" || exit 70
+    HOME="$CONTINUITY_RUNTIME_HOME" OPENCODE_CONFIG_DIR="$CONTINUITY_RUNTIME_RUN_CONFIG" \
+      SENSAI_PROJECT_ROOT="$CONTINUITY_RUNTIME_RUN_PROJECT" \
+      "$CONTINUITY_RUNTIME_BIN/sensai" "$@"
+  ) >"$RUN_TMP/$CONTINUITY_RUNTIME_RUN_NAME.out" \
+    2>"$RUN_TMP/$CONTINUITY_RUNTIME_RUN_NAME.err"
+  CONTINUITY_RUNTIME_RC=$?
+  evidence_log_command "$CONTINUITY_RUNTIME_RUN_NAME" \
+    "installed sensai $* <isolated runtime case>" "$CONTINUITY_RUNTIME_RC"
+  cp "$RUN_TMP/$CONTINUITY_RUNTIME_RUN_NAME.out" \
+    "$EVIDENCE_DIR/$CONTINUITY_RUNTIME_RUN_NAME.out" || return 70
+  cp "$RUN_TMP/$CONTINUITY_RUNTIME_RUN_NAME.err" \
+    "$EVIDENCE_DIR/$CONTINUITY_RUNTIME_RUN_NAME.err" || return 70
+}
+
+continuity_runtime_assert_data_error() {
+  CONTINUITY_RUNTIME_ASSERT_ID=$1
+  CONTINUITY_RUNTIME_ASSERT_REASON=$2
+  CONTINUITY_RUNTIME_ASSERT_DETAIL=$3
+  CONTINUITY_RUNTIME_ASSERT_ERR=$RUN_TMP/$CONTINUITY_RUNTIME_RUN_NAME.err
+  if test "$CONTINUITY_RUNTIME_RC" -eq 65 && \
+     rg -F -q --no-config "reason=$CONTINUITY_RUNTIME_ASSERT_REASON" \
+       "$CONTINUITY_RUNTIME_ASSERT_ERR"; then
+    assert_record "$CONTINUITY_RUNTIME_ASSERT_ID" 0 \
+      "$CONTINUITY_RUNTIME_ASSERT_DETAIL" || true
+  else
+    assert_record "$CONTINUITY_RUNTIME_ASSERT_ID" 1 \
+      "rc=$CONTINUITY_RUNTIME_RC expected=65/$CONTINUITY_RUNTIME_ASSERT_REASON" || true
+  fi
+}
+
+continuity_runtime_setup() {
+  CONTINUITY_RUNTIME_PARENT=$(CDPATH= cd -- "$RUN_TMP" 2>/dev/null && pwd -P) || return 70
+  CONTINUITY_RUNTIME=$CONTINUITY_RUNTIME_PARENT/runtime-resolver
+  CONTINUITY_RUNTIME_HOME=$CONTINUITY_RUNTIME/home
+  CONTINUITY_RUNTIME_CONFIG=$CONTINUITY_RUNTIME_HOME/.config/opencode
+  CONTINUITY_RUNTIME_BIN=$CONTINUITY_RUNTIME_HOME/.local/bin
+  CONTINUITY_RUNTIME_NEUTRAL=$CONTINUITY_RUNTIME/neutral
+  CONTINUITY_RUNTIME_ALIAS=$CONTINUITY_RUNTIME/alias
+  CONTINUITY_RUNTIME_SOURCE_XDG=$CONTINUITY_RUNTIME/source-xdg
+  mkdir -p "$CONTINUITY_RUNTIME_CONFIG" "$CONTINUITY_RUNTIME_BIN" \
+    "$CONTINUITY_RUNTIME_NEUTRAL" "$CONTINUITY_RUNTIME_ALIAS/bin" \
+    "$CONTINUITY_RUNTIME_ALIAS/output" "$CONTINUITY_RUNTIME_HOME/.local/output" \
+    "$CONTINUITY_RUNTIME_NEUTRAL/output" "$CONTINUITY_RUNTIME_SOURCE_XDG/opencode" || return 70
+  cp "$SOURCE_ROOT/bin/sensai" "$CONTINUITY_RUNTIME_BIN/sensai" || return 70
+  chmod 755 "$CONTINUITY_RUNTIME_BIN/sensai" || return 70
+  cp -R "$SOURCE_ROOT/output/." "$CONTINUITY_RUNTIME_CONFIG" || return 70
+  printf '%s\n' '{' >"$CONTINUITY_RUNTIME_HOME/.local/output/opencode.json" || return 70
+  printf '%s\n' '{' >"$CONTINUITY_RUNTIME_NEUTRAL/output/opencode.json" || return 70
+  printf '%s\n' '{' >"$CONTINUITY_RUNTIME_SOURCE_XDG/opencode/opencode.json" || return 70
+}
+
+continuity_runtime_installed_path_case() {
+  set +e
+  (
+    cd "$CONTINUITY_RUNTIME_NEUTRAL" || exit 70
+    HOME="$CONTINUITY_RUNTIME_HOME" XDG_CONFIG_HOME="$CONTINUITY_RUNTIME_HOME/.config" \
+      "$CONTINUITY_RUNTIME_BIN/sensai" doctor models
+  ) >"$RUN_TMP/runtime-absolute.out" 2>"$RUN_TMP/runtime-absolute.err"
+  CONTINUITY_RUNTIME_ABSOLUTE_RC=$?
+  (
+    cd "$CONTINUITY_RUNTIME_NEUTRAL" || exit 70
+    HOME="$CONTINUITY_RUNTIME_HOME" XDG_CONFIG_HOME="$CONTINUITY_RUNTIME_HOME/.config" \
+      PATH="$CONTINUITY_RUNTIME_BIN:$PATH" sensai doctor models
+  ) >"$RUN_TMP/runtime-path.out" 2>"$RUN_TMP/runtime-path.err"
+  CONTINUITY_RUNTIME_RC=$?
+  evidence_log_command runtime-path-installed \
+    'PATH=<isolated-home>/.local/bin:$PATH sensai doctor models' "$CONTINUITY_RUNTIME_RC"
+  cp "$RUN_TMP/runtime-absolute.out" "$EVIDENCE_DIR/runtime-absolute.out" || return 70
+  cp "$RUN_TMP/runtime-absolute.err" "$EVIDENCE_DIR/runtime-absolute.err" || return 70
+  cp "$RUN_TMP/runtime-path.out" "$EVIDENCE_DIR/runtime-path.out" || return 70
+  cp "$RUN_TMP/runtime-path.err" "$EVIDENCE_DIR/runtime-path.err" || return 70
+  if test "$CONTINUITY_RUNTIME_ABSOLUTE_RC" -eq 0 && \
+     test "$CONTINUITY_RUNTIME_RC" -eq 0 && \
+     cmp -s "$RUN_TMP/runtime-absolute.out" "$RUN_TMP/runtime-path.out" && \
+     cmp -s "$RUN_TMP/runtime-absolute.err" "$RUN_TMP/runtime-path.err"; then
+    assert_record continuity.runtime_path_installed 0 \
+      'absolute/PATH invocation이 같은 installed config root를 해소했다' || true
+  else
+    assert_record continuity.runtime_path_installed 1 \
+      "absolute_rc=$CONTINUITY_RUNTIME_ABSOLUTE_RC path_rc=$CONTINUITY_RUNTIME_RC" || true
+  fi
+}
+
+continuity_runtime_source_case() {
+  (
+    cd "$CONTINUITY_RUNTIME_NEUTRAL" || exit 70
+    HOME="$CONTINUITY_RUNTIME_HOME" OPENCODE_CONFIG_DIR="$CONTINUITY_RUNTIME_CONFIG" \
+      "$SOURCE_ROOT/bin/sensai" doctor models
+  ) >"$RUN_TMP/runtime-source.out" 2>"$RUN_TMP/runtime-source.err"
+  CONTINUITY_RUNTIME_RC=$?
+  evidence_log_command runtime-source-global \
+    './bin/sensai doctor models <same global config>' "$CONTINUITY_RUNTIME_RC"
+  if test "$CONTINUITY_RUNTIME_RC" -eq 0 && \
+     cmp -s "$RUN_TMP/runtime-absolute.out" "$RUN_TMP/runtime-source.out" && \
+     cmp -s "$RUN_TMP/runtime-absolute.err" "$RUN_TMP/runtime-source.err"; then
+    assert_record continuity.runtime_source_isolated 0 \
+      'source/installed 호출이 같은 global config 결과를 냈다' || true
+  else
+    assert_record continuity.runtime_source_isolated 1 \
+      "rc=$CONTINUITY_RUNTIME_RC expected=0" || true
+  fi
+}
+
+continuity_runtime_overlay_setup() {
+  CONTINUITY_OVERLAY_PROJECT=$CONTINUITY_RUNTIME/overlay-project
+  continuity_project_init "$CONTINUITY_OVERLAY_PROJECT" || return 70
+  CONTINUITY_OVERLAY_PROJECT=$(CDPATH= cd -- "$CONTINUITY_OVERLAY_PROJECT" 2>/dev/null && pwd -P) || \
+    return 70
+}
+
+continuity_runtime_global_only_case() {
+  continuity_runtime_installed_run runtime-global-only "$CONTINUITY_RUNTIME_CONFIG" \
+    "$CONTINUITY_OVERLAY_PROJECT" mission init global-only src global || return 70
+  if test "$CONTINUITY_RUNTIME_RC" -eq 0 && \
+     rg -F -q --no-config \
+       'trace_schema=global progress_schema=global trace_recipe=global progress_recipe=global' \
+       "$RUN_TMP/runtime-global-only.err"; then
+    assert_record continuity.runtime_global_only 0 \
+      'project override 부재 시 네 asset이 global에서 해소됐다' || true
+  else
+    assert_record continuity.runtime_global_only 1 \
+      "rc=$CONTINUITY_RUNTIME_RC provenance_missing" || true
+  fi
+}
+
+continuity_runtime_mixed_overlay_case() {
+  mkdir -p "$CONTINUITY_OVERLAY_PROJECT/.sensai/recipes" || return 70
+  cp "$CONTINUITY_RUNTIME_CONFIG/recipes/progress.jq" \
+    "$CONTINUITY_OVERLAY_PROJECT/.sensai/recipes/progress.jq" || return 70
+  perl -0pi -e 's/then render_status\(\$envelope\.progress\)/then ("<!-- project-progress-recipe -->\\n" + render_status(\$envelope.progress))/' \
+    "$CONTINUITY_OVERLAY_PROJECT/.sensai/recipes/progress.jq" || return 70
+  continuity_runtime_installed_run runtime-mixed-overlay "$CONTINUITY_RUNTIME_CONFIG" \
+    "$CONTINUITY_OVERLAY_PROJECT" mission init mixed-overlay src mixed || return 70
+  if test "$CONTINUITY_RUNTIME_RC" -eq 0 && \
+     rg -F -q --no-config \
+       'trace_schema=global progress_schema=global trace_recipe=global progress_recipe=project' \
+       "$RUN_TMP/runtime-mixed-overlay.err" && \
+     rg -F -q --no-config '<!-- project-progress-recipe -->' \
+       "$CONTINUITY_OVERLAY_PROJECT/docs/analysis/missions/mixed-overlay/status.md"; then
+    assert_record continuity.runtime_mixed_overlay 0 \
+      'project progress recipe와 global schema/trace recipe를 file별로 조합했다' || true
+  else
+    assert_record continuity.runtime_mixed_overlay 1 \
+      "rc=$CONTINUITY_RUNTIME_RC mixed_provenance_missing" || true
+  fi
+}
+
+continuity_runtime_invalid_overlay_case() {
+  CONTINUITY_INVALID_PROJECT=$CONTINUITY_RUNTIME/invalid-project
+  continuity_project_init "$CONTINUITY_INVALID_PROJECT" || return 70
+  mkdir -p "$CONTINUITY_INVALID_PROJECT/.sensai/recipes" || return 70
+  printf '%s\n' '{' >"$CONTINUITY_INVALID_PROJECT/.sensai/recipes/progress.jq" || return 70
+  continuity_runtime_installed_run runtime-project-invalid "$CONTINUITY_RUNTIME_CONFIG" \
+    "$CONTINUITY_INVALID_PROJECT" mission init invalid-overlay src rejected || return 70
+  if test "$CONTINUITY_RUNTIME_RC" -eq 65 && \
+     rg -F -q --no-config 'reason=runtime.asset_invalid' \
+       "$RUN_TMP/runtime-project-invalid.err" && \
+     test ! -e "$CONTINUITY_INVALID_PROJECT/docs"; then
+    assert_record continuity.runtime_project_invalid 0 \
+      'present-invalid project recipe를 global fallback 없이 mutation 전에 거부했다' || true
+  else
+    assert_record continuity.runtime_project_invalid 1 \
+      "rc=$CONTINUITY_RUNTIME_RC invalid_override_fell_back_or_mutated" || true
+  fi
+}
+
+continuity_runtime_overlay_cases() {
+  continuity_runtime_overlay_setup || return 70
+  continuity_runtime_global_only_case || return 70
+  continuity_runtime_mixed_overlay_case || return 70
+  continuity_runtime_invalid_overlay_case || return 70
+  CONTINUITY_GLOBAL_OBSERVED=$(sed -n 's/^런타임 //p' "$RUN_TMP/runtime-global-only.err" | tail -1) || return 70
+  CONTINUITY_MIXED_OBSERVED=$(sed -n 's/^런타임 //p' "$RUN_TMP/runtime-mixed-overlay.err" | tail -1) || return 70
+  CONTINUITY_INVALID_OBSERVED=$(sed -n 's/^오류 reason=\([^ ]*\).*/\1/p' \
+    "$RUN_TMP/runtime-project-invalid.err" | tail -1) || return 70
+  if rg -F -q --no-config '<!-- project-progress-recipe -->' \
+      "$CONTINUITY_OVERLAY_PROJECT/docs/analysis/missions/mixed-overlay/status.md"; then
+    CONTINUITY_MIXED_MARKER=true
+  else
+    CONTINUITY_MIXED_MARKER=false
+  fi
+  if test -e "$CONTINUITY_INVALID_PROJECT/docs"; then
+    CONTINUITY_INVALID_MUTATION=true
+  else
+    CONTINUITY_INVALID_MUTATION=false
+  fi
+  jq -n --arg global "$CONTINUITY_GLOBAL_OBSERVED" --arg mixed "$CONTINUITY_MIXED_OBSERVED" \
+    --arg invalid_reason "$CONTINUITY_INVALID_OBSERVED" \
+    --argjson mixed_marker "$CONTINUITY_MIXED_MARKER" \
+    --argjson invalid_mutation "$CONTINUITY_INVALID_MUTATION" \
+    '{global_observed:$global,mixed_observed:$mixed,mixed_recipe_marker:$mixed_marker,
+      invalid_reason:$invalid_reason,invalid_project_mutation:$invalid_mutation}' \
+    >"$EVIDENCE_DIR/runtime-overlay-provenance.json" || return 70
+}
+
+continuity_runtime_path_rejection_cases() {
+  continuity_runtime_installed_run runtime-relative-override relative-config \
+    "$CONTINUITY_RUNTIME_NEUTRAL" doctor models || return 70
+  continuity_runtime_assert_data_error continuity.runtime_relative_override \
+    runtime.asset_invalid 'relative override를 fallback보다 먼저 거부했다'
+
+  continuity_runtime_installed_run runtime-dot-override \
+    "$CONTINUITY_RUNTIME/missing-config/." "$CONTINUITY_RUNTIME_NEUTRAL" doctor models || return 70
+  continuity_runtime_assert_data_error continuity.runtime_dot_override \
+    runtime.asset_invalid 'trailing dot override를 missing asset과 구분했다'
+
+  continuity_runtime_config_case root-symlink || return 70
+  CONTINUITY_RUNTIME_ROOT_LINK=$CONTINUITY_RUNTIME/runtime-root-link
+  ln -s "$CONTINUITY_RUNTIME_CASE_CONFIG" "$CONTINUITY_RUNTIME_ROOT_LINK" || return 70
+  continuity_runtime_installed_run runtime-root-symlink "$CONTINUITY_RUNTIME_ROOT_LINK" \
+    "$CONTINUITY_RUNTIME_NEUTRAL" doctor models || return 70
+  continuity_runtime_assert_data_error continuity.runtime_root_symlink \
+    runtime.asset_invalid 'runtime root symlink를 사용 전에 거부했다'
+
+  continuity_runtime_config_case leaf-symlink || return 70
+  mv "$CONTINUITY_RUNTIME_CASE_CONFIG/toolchain.lock.json" \
+    "$CONTINUITY_RUNTIME_CASE_CONFIG/toolchain.real.json" || return 70
+  ln -s toolchain.real.json "$CONTINUITY_RUNTIME_CASE_CONFIG/toolchain.lock.json" || return 70
+  continuity_runtime_installed_run runtime-leaf-symlink "$CONTINUITY_RUNTIME_CASE_CONFIG" \
+    "$CONTINUITY_RUNTIME_NEUTRAL" doctor models || return 70
+  continuity_runtime_assert_data_error continuity.runtime_leaf_symlink \
+    runtime.asset_invalid 'runtime leaf symlink를 사용 전에 거부했다'
+}
+
+continuity_runtime_malformed_asset_cases() {
+  CONTINUITY_RUNTIME_PREFLIGHT_PROJECT=$CONTINUITY_RUNTIME/preflight-project
+  continuity_project_init "$CONTINUITY_RUNTIME_PREFLIGHT_PROJECT" || return 70
+  CONTINUITY_RUNTIME_PREFLIGHT_PROJECT=$(CDPATH= cd -- \
+    "$CONTINUITY_RUNTIME_PREFLIGHT_PROJECT" 2>/dev/null && pwd -P) || return 70
+
+  continuity_runtime_config_case malformed-config || return 70
+  printf '%s\n' '{' >"$CONTINUITY_RUNTIME_CASE_CONFIG/opencode.json" || return 70
+  continuity_runtime_installed_run runtime-malformed-config "$CONTINUITY_RUNTIME_CASE_CONFIG" \
+    "$CONTINUITY_RUNTIME_PREFLIGHT_PROJECT" doctor models || return 70
+  continuity_runtime_assert_data_error continuity.runtime_malformed_config \
+    runtime.asset_invalid 'malformed config를 모델 검사 전에 거부했다'
+
+  continuity_runtime_config_case malformed-schema || return 70
+  printf '%s\n' '{' >"$CONTINUITY_RUNTIME_CASE_CONFIG/schemas/progress.schema.json" || return 70
+  continuity_runtime_installed_run runtime-malformed-schema "$CONTINUITY_RUNTIME_CASE_CONFIG" \
+    "$CONTINUITY_RUNTIME_PREFLIGHT_PROJECT" mission init malformed-schema src rejected || return 70
+  if test ! -e "$CONTINUITY_RUNTIME_PREFLIGHT_PROJECT/docs/analysis/missions/malformed-schema"; then
+    continuity_runtime_assert_data_error continuity.runtime_malformed_schema \
+      runtime.asset_invalid 'malformed schema를 mission 생성 전에 거부했다'
+  else
+    assert_record continuity.runtime_malformed_schema 1 'malformed schema가 mission을 생성했다' || true
+  fi
+
+  continuity_runtime_config_case malformed-recipe || return 70
+  printf '%s\n' '{' >"$CONTINUITY_RUNTIME_CASE_CONFIG/recipes/progress.jq" || return 70
+  continuity_runtime_installed_run runtime-malformed-recipe "$CONTINUITY_RUNTIME_CASE_CONFIG" \
+    "$CONTINUITY_RUNTIME_PREFLIGHT_PROJECT" mission init malformed-recipe src rejected || return 70
+  if test ! -e "$CONTINUITY_RUNTIME_PREFLIGHT_PROJECT/docs/analysis/missions/malformed-recipe"; then
+    continuity_runtime_assert_data_error continuity.runtime_malformed_recipe \
+      runtime.asset_invalid 'malformed recipe를 mission 생성 전에 거부했다'
+  else
+    assert_record continuity.runtime_malformed_recipe 1 'malformed recipe가 mission을 생성했다' || true
+  fi
+}
+
+continuity_runtime_mission_preflight_cases() {
+  continuity_runtime_config_case mission-missing || return 70
+  rm "$CONTINUITY_RUNTIME_CASE_CONFIG/opencode.json" || return 70
+  for CONTINUITY_RUNTIME_MISSION_SUB in init checkpoint status resume; do
+    case "$CONTINUITY_RUNTIME_MISSION_SUB" in
+      init) set -- mission init preflight-init src rejected ;;
+      checkpoint)
+        set -- mission checkpoint preflight-checkpoint candidate.json 1 \
+          0000000000000000000000000000000000000000000000000000000000000000
+        ;;
+      status) set -- mission status preflight-status ;;
+      resume) set -- mission resume preflight-resume ;;
+    esac
+    continuity_runtime_installed_run "runtime-preflight-$CONTINUITY_RUNTIME_MISSION_SUB" \
+      "$CONTINUITY_RUNTIME_CASE_CONFIG" "$CONTINUITY_RUNTIME_PREFLIGHT_PROJECT" "$@" || return 70
+    continuity_runtime_assert_data_error \
+      "continuity.runtime_preflight_$CONTINUITY_RUNTIME_MISSION_SUB" runtime.asset_missing \
+      "mission ${CONTINUITY_RUNTIME_MISSION_SUB}가 mutation 전에 runtime preflight를 실행했다"
+  done
+  if test ! -e "$CONTINUITY_RUNTIME_PREFLIGHT_PROJECT/docs"; then
+    assert_record continuity.runtime_preflight_no_mutation 0 \
+      '모든 mission dispatch preflight가 project mutation 전에 종료했다' || true
+  else
+    assert_record continuity.runtime_preflight_no_mutation 1 \
+      'mission dispatch preflight가 project tree를 생성했다' || true
+  fi
+}
+
+continuity_runtime_executable_symlink_case() {
+  cp -R "$SOURCE_ROOT/output/." "$CONTINUITY_RUNTIME_ALIAS/output" || return 70
+  ln -s "$SOURCE_ROOT/bin/sensai" "$CONTINUITY_RUNTIME_ALIAS/bin/sensai" || return 70
+  (
+    cd "$CONTINUITY_RUNTIME_NEUTRAL" || exit 70
+    HOME="$CONTINUITY_RUNTIME_HOME" XDG_CONFIG_HOME="$CONTINUITY_RUNTIME_HOME/.config" \
+      "$CONTINUITY_RUNTIME_ALIAS/bin/sensai" doctor models
+  ) >"$RUN_TMP/runtime-symlink.out" 2>"$RUN_TMP/runtime-symlink.err"
+  CONTINUITY_RUNTIME_RC=$?
+  evidence_log_command runtime-executable-symlink \
+    '<isolated-alias>/bin/sensai doctor models' "$CONTINUITY_RUNTIME_RC"
+  cp "$RUN_TMP/runtime-symlink.out" "$EVIDENCE_DIR/runtime-symlink.out" || return 70
+  cp "$RUN_TMP/runtime-symlink.err" "$EVIDENCE_DIR/runtime-symlink.err" || return 70
+  if test "$CONTINUITY_RUNTIME_RC" -eq 65 && \
+     rg -F -q --no-config 'reason=runtime.executable_invalid' "$RUN_TMP/runtime-symlink.err"; then
+    assert_record continuity.runtime_executable_symlink 0 \
+      'executable symlink를 startup에서 거부했다' || true
+  else
+    assert_record continuity.runtime_executable_symlink 1 \
+      "rc=$CONTINUITY_RUNTIME_RC expected=65/runtime.executable_invalid" || true
+  fi
+}
+
+continuity_runtime_bare_source_rejection_case() {
+  CONTINUITY_BARE_ROOT=$CONTINUITY_RUNTIME/bare-source
+  CONTINUITY_BARE_PROJECT=$CONTINUITY_RUNTIME/bare-project
+  mkdir -p "$CONTINUITY_BARE_ROOT/bin" || return 70
+  cp "$SOURCE_ROOT/bin/sensai" "$CONTINUITY_BARE_ROOT/bin/sensai" || return 70
+  chmod 755 "$CONTINUITY_BARE_ROOT/bin/sensai" || return 70
+  continuity_project_init "$CONTINUITY_BARE_PROJECT" || return 70
+  set +e
+  "$CONTINUITY_BARE_ROOT/bin/sensai" help \
+    >"$RUN_TMP/runtime-bare-help.out" 2>"$RUN_TMP/runtime-bare-help.err"
+  CONTINUITY_BARE_HELP_RC=$?
+  if test "$CONTINUITY_BARE_HELP_RC" -eq 0; then
+    assert_record continuity.runtime_bare_help_asset_free 0 \
+      'help는 source manifest/output 없이 usage를 출력했다' || true
+  else
+    assert_record continuity.runtime_bare_help_asset_free 1 \
+      "rc=$CONTINUITY_BARE_HELP_RC bare help required source assets" || true
+  fi
+  set +e
+  "$CONTINUITY_BARE_ROOT/bin/sensai" doctor tools \
+    >"$RUN_TMP/runtime-bare-tools.out" 2>"$RUN_TMP/runtime-bare-tools.err"
+  CONTINUITY_BARE_TOOLS_RC=$?
+  case "$CONTINUITY_BARE_TOOLS_RC" in
+    0|65|69)
+      if rg -F -q --no-config '도구 tool=' "$RUN_TMP/runtime-bare-tools.out" \
+          "$RUN_TMP/runtime-bare-tools.err" && \
+         ! rg -F -q --no-config 'reason=runtime.executable_invalid' \
+           "$RUN_TMP/runtime-bare-tools.err"; then
+        assert_record continuity.runtime_bare_doctor_tools_asset_free 0 \
+          'doctor tools는 source asset과 무관하게 tool inventory를 실행했다' || true
+      else
+        assert_record continuity.runtime_bare_doctor_tools_asset_free 1 \
+          'doctor tools가 source admission에서 종료했다' || true
+      fi
+      ;;
+    *) assert_record continuity.runtime_bare_doctor_tools_asset_free 1 \
+         "unexpected_rc=$CONTINUITY_BARE_TOOLS_RC" || true ;;
+  esac
+  set +e
+  HOME="$CONTINUITY_RUNTIME_HOME" OPENCODE_CONFIG_DIR="$CONTINUITY_RUNTIME_CONFIG" \
+    SENSAI_PROJECT_ROOT="$CONTINUITY_BARE_PROJECT" \
+    "$CONTINUITY_BARE_ROOT/bin/sensai" mission init bare-source src rejected \
+    >"$RUN_TMP/runtime-bare-source.out" 2>"$RUN_TMP/runtime-bare-source.err"
+  CONTINUITY_RUNTIME_RC=$?
+  evidence_log_command runtime-bare-source \
+    '<bare-parent>/bin/sensai mission init <isolated-project>' "$CONTINUITY_RUNTIME_RC"
+  cp "$RUN_TMP/runtime-bare-source.out" "$EVIDENCE_DIR/runtime-bare-source.out" || return 70
+  cp "$RUN_TMP/runtime-bare-source.err" "$EVIDENCE_DIR/runtime-bare-source.err" || return 70
+  if test "$CONTINUITY_RUNTIME_RC" -eq 65 && \
+     rg -F -q --no-config 'reason=runtime.executable_invalid' \
+       "$RUN_TMP/runtime-bare-source.err" && \
+     test ! -e "$CONTINUITY_BARE_PROJECT/docs"; then
+    assert_record continuity.runtime_bare_source_rejected 0 \
+      'manifest/output 없는 bare source CLI를 mission mutation 전에 거부했다' || true
+  else
+    assert_record continuity.runtime_bare_source_rejected 1 \
+      "rc=$CONTINUITY_RUNTIME_RC bare source accepted or project mutated" || true
+  fi
+}
+
+continuity_runtime_source_exact_contract_cases() {
+  for CONTINUITY_SOURCE_CASE in missing extra malformed; do
+    CONTINUITY_SOURCE_ROOT=$CONTINUITY_RUNTIME/source-contract-$CONTINUITY_SOURCE_CASE
+    CONTINUITY_SOURCE_PROJECT=$CONTINUITY_RUNTIME/source-project-$CONTINUITY_SOURCE_CASE
+    mkdir -p "$CONTINUITY_SOURCE_ROOT/bin" "$CONTINUITY_SOURCE_ROOT/output" || return 70
+    cp "$SOURCE_ROOT/bin/sensai" "$CONTINUITY_SOURCE_ROOT/bin/sensai" || return 70
+    cp "$SOURCE_ROOT/manifest.txt" "$CONTINUITY_SOURCE_ROOT/manifest.txt" || return 70
+    cp -R "$SOURCE_ROOT/output/." "$CONTINUITY_SOURCE_ROOT/output" || return 70
+    chmod 755 "$CONTINUITY_SOURCE_ROOT/bin/sensai" || return 70
+    continuity_project_init "$CONTINUITY_SOURCE_PROJECT" || return 70
+    CONTINUITY_SOURCE_REASON=package.source_exact_set_mismatch
+    case "$CONTINUITY_SOURCE_CASE" in
+      missing) rm "$CONTINUITY_SOURCE_ROOT/output/AGENTS.md" || return 70 ;;
+      extra) printf '%s\n' 'unmanaged' >"$CONTINUITY_SOURCE_ROOT/output/extra.txt" || return 70 ;;
+      malformed)
+        LC_ALL=C sort -r "$CONTINUITY_SOURCE_ROOT/manifest.txt" \
+          >"$CONTINUITY_SOURCE_ROOT/manifest.tmp" || return 70
+        mv "$CONTINUITY_SOURCE_ROOT/manifest.tmp" \
+          "$CONTINUITY_SOURCE_ROOT/manifest.txt" || return 70
+        CONTINUITY_SOURCE_REASON=package.manifest_invalid
+        ;;
+    esac
+    set +e
+    HOME="$CONTINUITY_RUNTIME_HOME" OPENCODE_CONFIG_DIR="$CONTINUITY_RUNTIME_CONFIG" \
+      SENSAI_PROJECT_ROOT="$CONTINUITY_SOURCE_PROJECT" \
+      "$CONTINUITY_SOURCE_ROOT/bin/sensai" mission init \
+      "source-$CONTINUITY_SOURCE_CASE" src rejected \
+      >"$RUN_TMP/runtime-source-$CONTINUITY_SOURCE_CASE.out" \
+      2>"$RUN_TMP/runtime-source-$CONTINUITY_SOURCE_CASE.err"
+    CONTINUITY_RUNTIME_RC=$?
+    if test "$CONTINUITY_RUNTIME_RC" -eq 65 && \
+       rg -F -q --no-config "reason=$CONTINUITY_SOURCE_REASON" \
+         "$RUN_TMP/runtime-source-$CONTINUITY_SOURCE_CASE.err" && \
+       test ! -e "$CONTINUITY_SOURCE_PROJECT/docs"; then
+      assert_record "continuity.runtime_source_exact_$CONTINUITY_SOURCE_CASE" 0 \
+        "$CONTINUITY_SOURCE_CASE source contract를 project mutation 전에 거부했다" || true
+    else
+      assert_record "continuity.runtime_source_exact_$CONTINUITY_SOURCE_CASE" 1 \
+        "rc=$CONTINUITY_RUNTIME_RC reason=$CONTINUITY_SOURCE_REASON or project mutated" || true
+    fi
+    cp "$RUN_TMP/runtime-source-$CONTINUITY_SOURCE_CASE.err" \
+      "$EVIDENCE_DIR/runtime-source-$CONTINUITY_SOURCE_CASE.err" || return 70
+  done
+}
+
+continuity_runtime_missing_asset_case() {
+  rm "$CONTINUITY_RUNTIME_CONFIG/toolchain.lock.json" || return 70
+  continuity_runtime_installed_run runtime-missing "$CONTINUITY_RUNTIME_CONFIG" \
+    "$CONTINUITY_RUNTIME_NEUTRAL" doctor models || return 70
+  continuity_runtime_assert_data_error continuity.runtime_asset_missing \
+    runtime.asset_missing 'missing runtime asset을 stable startup reason으로 거부했다'
+  cp "$SOURCE_ROOT/output/toolchain.lock.json" \
+    "$CONTINUITY_RUNTIME_CONFIG/toolchain.lock.json" || return 70
+}
+
+continuity_runtime_resolver_contract() {
+  continuity_runtime_setup || return 70
+  continuity_runtime_installed_path_case || return 70
+  continuity_runtime_source_case || return 70
+  continuity_runtime_overlay_cases || return 70
+  continuity_runtime_path_rejection_cases || return 70
+  continuity_runtime_malformed_asset_cases || return 70
+  continuity_runtime_mission_preflight_cases || return 70
+  continuity_runtime_executable_symlink_case || return 70
+  continuity_runtime_bare_source_rejection_case || return 70
+  continuity_runtime_source_exact_contract_cases || return 70
+  continuity_runtime_missing_asset_case || return 70
+  OPENCODE_CONFIG_DIR=$CONTINUITY_RUNTIME_CONFIG
+  export OPENCODE_CONFIG_DIR
 }
 
 continuity_write_receipt() {
@@ -440,27 +897,26 @@ continuity_failure_matrix() {
   continuity_assert_rejected_unchanged continuity.git_head_drift "$CONTINUITY_FAIL" failure-mission \
     75 progress.resume.precondition_git_head "$CONTINUITY_FAIL_BASE" "$CONTINUITY_RUN_ERR" || return 70
 
-  CONTINUITY_TOOLCHAIN_SOURCE=$RUN_TMP/continuity-toolchain-source
   CONTINUITY_TOOLCHAIN_PROJECT=$RUN_TMP/continuity-toolchain-project
-  continuity_clone_source "$CONTINUITY_TOOLCHAIN_SOURCE" || return 70
-  CONTINUITY_TOOLCHAIN_SOURCE=$(CDPATH= cd -- "$CONTINUITY_TOOLCHAIN_SOURCE" 2>/dev/null && pwd -P) || return 70
   continuity_project_init "$CONTINUITY_TOOLCHAIN_PROJECT" || return 70
   CONTINUITY_TOOLCHAIN_PROJECT=$(CDPATH= cd -- "$CONTINUITY_TOOLCHAIN_PROJECT" 2>/dev/null && pwd -P) || return 70
-  SENSAI_PROJECT_ROOT="$CONTINUITY_TOOLCHAIN_PROJECT" \
-    "$CONTINUITY_TOOLCHAIN_SOURCE/bin/sensai" mission init toolchain-mission src 'toolchain drift 검증' \
+  OPENCODE_CONFIG_DIR="$CONTINUITY_RUNTIME_CONFIG" SENSAI_PROJECT_ROOT="$CONTINUITY_TOOLCHAIN_PROJECT" \
+    "$SOURCE_ROOT/bin/sensai" mission init toolchain-mission src 'toolchain drift 검증' \
     >"$RUN_TMP/toolchain-init.out" 2>"$RUN_TMP/toolchain-init.err" || return 70
   CONTINUITY_TOOLCHAIN_PROGRESS="$CONTINUITY_TOOLCHAIN_PROJECT/docs/analysis/missions/toolchain-mission/progress.json"
   continuity_sha "$CONTINUITY_TOOLCHAIN_PROGRESS" || return 70
   CONTINUITY_TOOLCHAIN_PROGRESS_HASH=$CONTINUITY_SHA
-  jq '.model_admission="ISOLATED_DRIFT"' "$CONTINUITY_TOOLCHAIN_SOURCE/output/toolchain.lock.json" \
-    >"$CONTINUITY_TOOLCHAIN_SOURCE/output/toolchain.lock.json.tmp" || return 70
-  mv "$CONTINUITY_TOOLCHAIN_SOURCE/output/toolchain.lock.json.tmp" \
-    "$CONTINUITY_TOOLCHAIN_SOURCE/output/toolchain.lock.json" || return 70
+  cp "$CONTINUITY_RUNTIME_CONFIG/toolchain.lock.json" "$RUN_TMP/toolchain.lock.backup.json" || return 70
+  jq '.model_admission="ISOLATED_DRIFT"' "$CONTINUITY_RUNTIME_CONFIG/toolchain.lock.json" \
+    >"$CONTINUITY_RUNTIME_CONFIG/toolchain.lock.json.tmp" || return 70
+  mv "$CONTINUITY_RUNTIME_CONFIG/toolchain.lock.json.tmp" \
+    "$CONTINUITY_RUNTIME_CONFIG/toolchain.lock.json" || return 70
   set +e
-  SENSAI_PROJECT_ROOT="$CONTINUITY_TOOLCHAIN_PROJECT" \
-    "$CONTINUITY_TOOLCHAIN_SOURCE/bin/sensai" mission resume toolchain-mission \
+  OPENCODE_CONFIG_DIR="$CONTINUITY_RUNTIME_CONFIG" SENSAI_PROJECT_ROOT="$CONTINUITY_TOOLCHAIN_PROJECT" \
+    "$SOURCE_ROOT/bin/sensai" mission resume toolchain-mission \
     >"$RUN_TMP/toolchain-drift.out" 2>"$RUN_TMP/toolchain-drift.err"
   CONTINUITY_TOOLCHAIN_RC=$?
+  cp "$RUN_TMP/toolchain.lock.backup.json" "$CONTINUITY_RUNTIME_CONFIG/toolchain.lock.json" || return 70
   evidence_log_command toolchain-drift './bin/sensai mission resume <격리 toolchain drift>' "$CONTINUITY_TOOLCHAIN_RC"
   continuity_sha "$CONTINUITY_TOOLCHAIN_PROGRESS" || return 70
   if test "$CONTINUITY_TOOLCHAIN_RC" -eq 75 && \
@@ -540,6 +996,7 @@ continuity_write_evidence() {
 
 case_continuity() {
   CASE_TOTAL=$((CASE_TOTAL + 1))
+  continuity_runtime_resolver_contract || return 70
   continuity_gate_flow || return 70
   continuity_failure_matrix || return 70
   continuity_write_evidence || return 70
