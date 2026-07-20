@@ -32,10 +32,9 @@ test -d "$TARGET_REPO"
 test ! -L "$TARGET_REPO"
 
 "$SENSAI_SOURCE/bin/sensai" doctor tools
-"$SENSAI_SOURCE/bin/sensai" doctor models
 ```
 
-`doctor tools`는 `opencode`, `fd`, `rg`, `sg`, `jq`, `yq`, `mdq`, `mmdc`의 제품 식별을 확인한다. OpenCode는 exact `1.18.3`, `sg`는 ast-grep, `yq`는 Mike Farah 제품이어야 한다. `doctor models`는 model call이나 credential read 없이 config alias와 localhost transport만 확인한다. lead `zai/glm-5.2`와 peer `sensai-ollama/qwen3.5:9b`의 상태는 계속 `MODEL_ADMISSION_UNVERIFIED`다.
+install 전에는 `doctor tools`만 실행한다. 이 명령은 `opencode`, `fd`, `rg`, `sg`, `jq`, `yq`, `mdq`, `mmdc`의 제품 식별을 확인한다. OpenCode는 exact `1.18.3`, `sg`는 ast-grep, `yq`는 Mike Farah 제품이어야 한다. `doctor models`는 설치된 global config를 읽으므로 install 성공 뒤 installed CLI로 실행한다.
 
 `output/opencode.json`의 `apiKey: ollama`는 localhost OpenAI-compatible provider 형식을 위한 비밀 아닌 자리표시자다. 실제 token이나 `.env` 값을 복사하지 않는다.
 
@@ -47,7 +46,7 @@ test ! -L "$TARGET_REPO"
 "$SENSAI_SOURCE/bin/sensai" install
 ```
 
-성공 출력은 `mode=install`, `status=READY`, `files=36`, `created`, `unchanged`, 세 SHA-256, `config_root`, `cli`를 포함한다. 설치 규칙은 다음과 같다.
+성공 출력은 `mode=install`, `status=READY`, `config_target`, `cli_target`, `leaf_count=36`, `manifest_sha256`, `config_sha256`, `cli_sha256`, `config_created`, `config_unchanged`, `cli_result`, `path_contains_local_bin`을 포함한다. 설치 규칙은 다음과 같다.
 
 - managed leaf가 absent면 생성한다.
 - source와 byte-equal인 regular leaf는 no-op으로 분류한다.
@@ -55,13 +54,13 @@ test ! -L "$TARGET_REPO"
 - `$HOME/.local/bin/sensai`도 같은 absent/equal/conflict 규칙을 따르며 equal 판정에는 executable mode가 필요하다.
 - global config root의 unmanaged file과 directory는 보존한다.
 - 실패 시 이번 실행이 만든 expected-hash 파일과 owned empty directory만 rollback한다. preexisting equal leaf와 unmanaged content는 지우지 않는다.
-- 같은 source로 다시 실행하면 `created=0`, `unchanged=37`인 idempotent no-op이다. 이 `37`은 managed config 36개와 외부 CLI 1개의 상태 합계이지 단일 manifest leaf 수가 아니다.
+- 같은 source로 다시 실행하면 `config_created=0`, `config_unchanged=36`, `cli_result=unchanged`인 idempotent no-op이다.
 
 installer는 `OPENCODE_CONFIG_DIR`나 `XDG_CONFIG_HOME`으로 설치 위치를 바꾸지 않는다. 설치 target은 physical `$HOME/.config/opencode`, CLI target은 physical `$HOME/.local/bin/sensai`다.
 
 ## installed CLI 호출
 
-가장 명시적인 호출은 절대 경로다.
+install 뒤 global config와 model alias를 확인하는 가장 명시적인 호출은 절대 경로다.
 
 ```sh
 "$HOME/.local/bin/sensai" doctor models
@@ -80,7 +79,11 @@ installed mode는 해석된 executable이 exact physical `$HOME/.local/bin/sensa
 `stage`는 release·검증용 config-only projection이다.
 
 ```sh
-STAGE_PARENT="$(mktemp -d /private/tmp/sensai-stage.XXXXXX)"
+STAGE_TMP_BASE=$(CDPATH= cd -- "${TMPDIR:-/tmp}" && pwd -P) || exit 73
+case "$STAGE_TMP_BASE" in
+  /|'') printf '%s\n' "temp root 거부: $STAGE_TMP_BASE" >&2; exit 73 ;;
+esac
+STAGE_PARENT=$(mktemp -d "$STAGE_TMP_BASE/sensai-stage.XXXXXX") || exit 73
 STAGE_TARGET="$STAGE_PARENT/config"
 "$SENSAI_SOURCE/bin/sensai" stage "$STAGE_TARGET"
 
@@ -94,9 +97,16 @@ target은 absent normalized absolute path여야 하고 parent는 기존 physical
 
 ```sh
 case "$STAGE_PARENT" in
-  /private/tmp/sensai-stage.*) find "$STAGE_PARENT" -depth -delete ;;
+  "$STAGE_TMP_BASE"/sensai-stage.*) ;;
   *) printf '%s\n' "정리 거부: $STAGE_PARENT" >&2; exit 73 ;;
 esac
+STAGE_SUFFIX=${STAGE_PARENT#"$STAGE_TMP_BASE"/sensai-stage.}
+case "$STAGE_SUFFIX" in
+  ''|*/*) printf '%s\n' "정리 거부: $STAGE_PARENT" >&2; exit 73 ;;
+esac
+test -d "$STAGE_PARENT" && test ! -L "$STAGE_PARENT" || exit 73
+test "$(CDPATH= cd -- "$STAGE_PARENT" && pwd -P)" = "$STAGE_PARENT" || exit 73
+find "$STAGE_PARENT" -depth -delete
 ```
 
 ## runtime global root와 project override

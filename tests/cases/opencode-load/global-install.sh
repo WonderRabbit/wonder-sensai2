@@ -239,4 +239,3 @@ opencode_load_global_install_integration() {
       detail:"schemas/trace.schema.json",global_fallback:false,project_mutation:$project_mutation}' \
     >"$EVIDENCE_DIR/present-invalid.json" || return 70
 }
-

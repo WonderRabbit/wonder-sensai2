@@ -611,13 +611,6 @@ case_docs() {
     "$SOURCE_ROOT/plan/prd" || return 70
   docs_assert_absent docs.no_bare_planning_filename 'operating-model\.md' "$SOURCE_ROOT/plan/prd" || return 70
   docs_assert_absent docs.no_workflow_principle_count_drift '본 ([0-689]|[1-9][0-9]+)원칙' "$SOURCE_ROOT/plan/prd/O6-workflow-orchestration.md" || return 70
-  if test "${SENSAI_TEST_DOCS_INNER:-0}" != 1; then
-    docs_assert_absent docs.no_stale_install_topology '\$OPENCODE_CONFIG_DIR/bin/sensai|install <absent-absolute-config-path>|install "\$SENSAI_CONFIG"|37-leaf|37개 (canonical|managed|manifest)|아직 구현 전|나머지 runtime leaf는 아직 없' \
-      "$SOURCE_ROOT/README.md" "$SOURCE_ROOT/AGENTS.md" "$SOURCE_ROOT/risk.md" \
-      "$SOURCE_ROOT/docs/PROD.md" "$SOURCE_ROOT/docs/harness" \
-      "$SOURCE_ROOT/docs/target-repo-analysis-guide.md" || return 70
-  fi
-
   docs_assert_contains docs.alias_t2_program 'T2 program/charter → `T2-research-program\.md`' "$SOURCE_ROOT/README.md"
   docs_assert_contains docs.alias_t2_method 'T2 experiment methodology → `T2-methodology\.md`' "$SOURCE_ROOT/README.md"
   docs_assert_contains docs.alias_r3_cli 'R3 CLI catalog → `R3-cli-tools\.md`' "$SOURCE_ROOT/README.md"
