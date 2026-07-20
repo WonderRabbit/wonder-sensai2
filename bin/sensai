@@ -313,8 +313,10 @@ package_cleanup() {
      test -n "${PACKAGE_WORK:-}" && test -d "$PACKAGE_WORK" && ! test -L "$PACKAGE_WORK"; then
     case "$PACKAGE_WORK" in
       "${PACKAGE_PARENT:-}/.sensai-package."*)
-        rm -rf "$PACKAGE_WORK" 2>/dev/null || true
-        PACKAGE_WORK_OWNED=0
+        if rm -rf "$PACKAGE_WORK" 2>/dev/null; then
+          PACKAGE_WORK_OWNED=0
+          PACKAGE_WORK=''
+        fi
         ;;
     esac
   fi
@@ -322,12 +324,52 @@ package_cleanup() {
      test -n "${PACKAGE_LOCK:-}" && test -d "$PACKAGE_LOCK" && ! test -L "$PACKAGE_LOCK"; then
     case "$PACKAGE_LOCK" in
       "${PACKAGE_PARENT:-}/.sensai-package-lock."*)
-        rmdir "$PACKAGE_LOCK" 2>/dev/null || true
-        PACKAGE_LOCK_OWNED=0
+        if rmdir "$PACKAGE_LOCK" 2>/dev/null; then
+          PACKAGE_LOCK_OWNED=0
+          PACKAGE_LOCK=''
+        fi
         ;;
     esac
   fi
   return "$PACKAGE_CLEANUP_EXIT"
+}
+
+package_finish_deploy() {
+  trap '' HUP INT TERM
+  PACKAGE_FINISH_FAILED=0
+  if test "${PACKAGE_WORK_OWNED:-0}" -eq 1; then
+    case "$PACKAGE_WORK" in
+      "${PACKAGE_PARENT:-}/.sensai-package."*)
+        if test -d "$PACKAGE_WORK" && ! test -L "$PACKAGE_WORK" &&
+           rm -rf "$PACKAGE_WORK" 2>/dev/null; then
+          PACKAGE_WORK_OWNED=0
+          PACKAGE_WORK=''
+        else
+          PACKAGE_FINISH_FAILED=1
+        fi
+        ;;
+      *) PACKAGE_FINISH_FAILED=1 ;;
+    esac
+  fi
+  if test "${PACKAGE_LOCK_OWNED:-0}" -eq 1; then
+    case "$PACKAGE_LOCK" in
+      "${PACKAGE_PARENT:-}/.sensai-package-lock."*)
+        if test -d "$PACKAGE_LOCK" && ! test -L "$PACKAGE_LOCK" &&
+           rmdir "$PACKAGE_LOCK" 2>/dev/null; then
+          PACKAGE_LOCK_OWNED=0
+          PACKAGE_LOCK=''
+        else
+          PACKAGE_FINISH_FAILED=1
+        fi
+        ;;
+      *) PACKAGE_FINISH_FAILED=1 ;;
+    esac
+  fi
+  if test "$PACKAGE_FINISH_FAILED" -ne 0; then
+    trap 'exit 130' HUP INT TERM
+    fail "$EX_TEMPFAIL" package.rollback_failed owned_state_mismatch
+  fi
+  trap - EXIT HUP INT TERM
 }
 
 package_test_pause() {
@@ -1173,6 +1215,7 @@ package_deploy() {
   sha256_file "$PACKAGE_WORK/stage.sha256" || \
     fail "$EX_UNAVAILABLE" package.hash_failed staged_payload
   PACKAGE_STAGE_SHA=$SHA_VALUE
+  package_finish_deploy
   printf '패키지 mode=%s status=READY files=%s manifest_sha256=%s payload_sha256=%s stage_sha256=%s target=%s\n' \
     "$PACKAGE_MODE" "$PACKAGE_COUNT" "$PACKAGE_MANIFEST_SHA" "$PACKAGE_PAYLOAD_SHA" \
     "$PACKAGE_STAGE_SHA" "$PACKAGE_TARGET"
