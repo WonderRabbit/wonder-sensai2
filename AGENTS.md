@@ -2,11 +2,11 @@
 
 ## 프로젝트 구조 및 모듈 구성
 
-이 저장소는 현재 `wonder-sensai` OpenCode 하네스의 명세와 설정을 관리하며, 애플리케이션 런타임은 포함하지 않는다. `output/`은 설치 가능한 OpenCode 런타임의 유일한 source root이고, `output/AGENTS.md`와 `output/opencode.json`을 포함한다. 루트 `AGENTS.md`는 저장소 기여자 계약이며 runtime prompt가 아니다. `fixtures/`, `tests/`, `bin/`, `docs/`, 루트 `manifest.txt`는 저장소 측 자산으로 `output/`에 복사하지 않는다. `README.md`는 목표 워크플로와 근거 계약을 정의하고, `docs/PROD.md`에는 제품 경계와 Go 도입 게이트가 있으며, `docs/r4-mapping.md`에는 작업·에이전트·도구 매핑이 있다. 연구 기록은 `docs/research/EXP-template.md`를 기준으로 작성한다. `.gitignore`에 포함된 `plan/`은 로컬 계획 자료이므로 커밋되는 문서가 이 경로에 의존하지 않게 한다.
+이 저장소는 `wonder-sensai` OpenCode 하네스의 명세, packaging source와 실행 CLI를 관리한다. `output/`은 설치 payload 36개의 유일한 source root이지만 runtime 탐색 root는 아니다. `./bin/sensai install`은 기존 `$HOME/.config/opencode` 아래에 managed leaf를 파일 단위로 추가하고 CLI 하나를 `$HOME/.local/bin/sensai`에 설치한다. 루트 `AGENTS.md`는 저장소 기여자 계약이며 runtime prompt가 아니다. `fixtures/`, `tests/`, `bin/`, `docs/`, 루트 `manifest.txt`는 repository-side 자산으로 `output/`에 복사하지 않는다. `README.md`는 목표 워크플로와 근거 계약을 정의하고, `docs/PROD.md`에는 제품 경계와 Go 도입 게이트가 있으며, `docs/r4-mapping.md`에는 작업·에이전트·도구 매핑이 있다. 연구 기록은 `docs/research/EXP-template.md`를 기준으로 작성한다. `.gitignore`에 포함된 `plan/`은 로컬 계획 자료이므로 커밋되는 문서가 이 경로에 의존하지 않게 한다.
 
 ## 빌드, 테스트 및 개발 명령
 
-현재 체크아웃에는 실행 가능한 fail-closed 테스트 러너가 있다. 변경 범위에 맞는 selector를 실행하고, 설정은 canonical `output/`에서 검사한다.
+현재 체크아웃에는 실행 가능한 fail-closed 테스트 러너가 있다. 변경 범위에 맞는 selector를 실행하고, packaging source는 `output/`, installed config는 격리한 기존 `$HOME/.config/opencode`, CLI는 격리한 `$HOME/.local/bin/sensai`에서 검사한다.
 
 ```sh
 jq empty output/opencode.json
@@ -18,7 +18,7 @@ jq empty output/opencode.json
 git diff --check
 ```
 
-`./bin/sensai`와 root `manifest.txt`는 아직 구현 전이다. 해당 경로가 추가되고 실제 실행에 성공하기 전에는 packaging 또는 설치가 통과했다고 기록하지 않는다.
+`./bin/sensai`와 root `manifest.txt`는 구현돼 있다. `stage`는 부재한 절대 target에 36개 config leaf만 투영하고 `install`은 인자를 받지 않는다. 설치는 managed leaf가 없으면 생성하고 byte-equal regular file이면 no-op이며, differing regular file·symlink·directory 충돌은 쓰기 전에 exit `73`으로 거부한다. 기존 root와 unmanaged content는 보존한다.
 
 ## Fixture corpus와 검증 계약
 
@@ -41,7 +41,7 @@ fixture를 하나라도 바꾸면 다음 순서 전체를 수행한다.
 
 ## 테스트 지침
 
-명령 예제와 상대 링크를 직접 검토한 뒤 위 검사를 실행한다. 근거 규칙 변경은 명시적인 미확인, 모호성, 충돌, `path:line` provenance 상태를 보존해야 한다. 실행 자산을 추가할 때는 `tests/` 아래에 happy, adversarial, regression 시나리오를 만들고 정확한 실행법을 `README.md`에 기록한다. runtime exact-set 계약은 `tests/contracts/`가 소유하며 아직 구현되지 않은 target leaf와 현재 존재 여부를 혼동하지 않는다.
+명령 예제와 상대 링크를 직접 검토한 뒤 위 검사를 실행한다. 근거 규칙 변경은 명시적인 미확인, 모호성, 충돌, `path:line` provenance 상태를 보존해야 한다. 실행 자산을 추가할 때는 `tests/` 아래에 happy, adversarial, regression 시나리오를 만들고 정확한 실행법을 `README.md`에 기록한다. config manifest exact-set 계약은 `tests/contracts/`가 소유하며 36개 managed leaf와 별도 installed CLI를 하나의 root로 합치지 않는다.
 
 ## 커밋 및 Pull Request 지침
 

@@ -8,7 +8,7 @@
 
 | 주제 | canonical 결정 | 배제한 해석 |
 | --- | --- | --- |
-| payload | `output/`의 단일 runtime source + root repository-side installer/manifest | root runtime duplicate 또는 `.opencode/` 병행 복사본 |
+| payload | `output/`의 36-leaf packaging source + existing global config managed install + `$HOME/.local/bin/sensai` | 단일 config root에 CLI 포함 또는 runtime `output/` fallback |
 | OpenCode | exact `1.18.3` | `1.17.18` 이상 범위 허용 |
 | model baseline | lead `zai/glm-5.2`, peer `sensai-ollama/qwen3.5:9b` | Qwen 35B를 현재 lead alias로 간주 |
 | model status | discovery/load 값만, `MODEL_ADMISSION=UNVERIFIED` | alias 발견을 live 입학으로 간주 |
@@ -43,9 +43,8 @@
 
 ## 현재 비주장
 
-- runtime payload를 복구하거나 구현했다는 주장 없음
-- agent/command/skill 파일이 존재한다는 주장 없음
-- OpenCode config load 성공 주장 없음
 - live model, TUI, delegation 성공 주장 없음
 - Windows 또는 cross-platform PASS 주장 없음
 - commit, tag, push, publish 없음
+
+36개 managed config leaf, 별도 installed CLI와 deterministic OpenCode load는 구현됐다. runtime schema·recipe는 project `.sensai/{schemas,recipes}`의 같은 파일을 우선하고 해당 project file이 absent일 때만 global config로 fallback한다. present-invalid project file은 fail closed하며 CWD나 executable parent의 `output/`은 fallback이 아니다.

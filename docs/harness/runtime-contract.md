@@ -1,14 +1,16 @@
 # 하네스 runtime 계약
 
-## source와 load 경계
+## packaging과 설치 경계
 
-runtime source는 `output/AGENTS.md`, `output/opencode.json`, `output/agents/`, `output/commands/`, `output/skills/`, `output/schemas/`, `output/recipes/`다. root `manifest.txt`는 이 leaf를 `output/` 기준 상대 경로로 나열한다. target은 2 agents, 9 commands, 15 skills의 exact-set이며 source와 stage에 hidden extra, symlink, 중복 normalized path를 허용하지 않는다.
+`output/`은 `AGENTS.md`, `opencode.json`, `toolchain.lock.json`, agents, commands, skills, schemas, recipes로 이루어진 36개 managed config leaf의 packaging source다. root `manifest.txt`는 이 leaf를 `output/` 기준 상대 경로로 나열한다. target은 2 agents, 9 commands, 15 skills의 exact-set이며 source와 stage에 hidden extra, symlink, 중복 normalized path를 허용하지 않는다. `output/`은 실행 중 runtime asset 탐색 경로가 아니다.
 
 output의 사람이 읽는 제목, 설명, 지침, provider/model 표시명은 한국어로 작성한다. OpenCode가 요구하는 key/schema field, provider/model ID, path, command/skill 이름, stable ID, enum, reason code, shell·JSON·jq 문법은 번역하지 않는다. 검증기는 영어 자연어 문장 주입을 거부하되 식별자와 코드를 오탐하지 않아야 한다.
 
 `output/opencode.json`의 공급자 ID는 `sensai-ollama`, 주소는 `http://localhost:11434/v1`, `apiKey`는 `ollama`로 고정한다. 이 키는 로컬 OpenAI 호환 공급자 형식을 위한 비밀 아닌 자리표시자이며 실제 자격 증명이 아니다. 환경 변수·실제 비밀값·다른 호스트로 교체하는 설정은 exact config 검증에서 거부한다.
 
-`OPENCODE_CONFIG_DIR`는 OpenCode의 다른 설정 층과 합쳐지는 merged overlay다. 따라서 변수를 지정한 것만으로 isolation을 주장하지 않는다. 의미 검증은 다음을 모두 갖춘 disposable 환경에서 수행한다.
+`stage <absent-absolute-target>`는 36개 config leaf만 부재한 target에 원자 투영하며 CLI는 포함하지 않는다. `install`은 인자를 받지 않고 기존 물리 `$HOME/.config/opencode`에 이 leaf를 파일 단위로 설치하며 `$HOME/.local/bin/sensai` 하나를 별도로 게시한다. managed leaf와 CLI가 absent면 생성하고 source와 byte-equal인 regular file이면 no-op이다. differing regular file, symlink, directory 또는 비정규 파일은 `package.managed_conflict`, exit `73`으로 pre-write 거부한다. root 자체와 unmanaged file·directory는 그대로 보존하고 실패 시 이번 실행이 만든 expected-hash 파일과 owned empty directory만 rollback한다.
+
+`OPENCODE_CONFIG_DIR`는 OpenCode의 다른 설정 층과 합쳐지는 merged overlay다. 따라서 변수를 지정한 것만으로 isolation을 주장하지 않는다. 설치 위치를 바꾸지도 않는다. 의미 검증은 다음을 모두 갖춘 disposable 환경에서 수행한다.
 
 - absent stage root
 - disposable `HOME`과 XDG 경로
@@ -18,7 +20,20 @@ output의 사람이 읽는 제목, 설명, 지침, provider/model 표시명은 �
 
 `opencode debug`는 초기화 파일을 쓸 수 있는 mutating diagnostic이다. source tree나 실제 HOME에서 acceptance 명령으로 실행하지 않는다.
 
-stage 공개 직후에는 canonical `output/` 36개 leaf와 repository-side CLI를 설치 root의 `bin/sensai`로 배치한 manifest 37개 leaf만 있어야 한다. 설치 CLI는 source와 byte-identical하고 실행 가능해야 하며, 명령은 대상 CWD의 상대 CLI가 아니라 `"$OPENCODE_CONFIG_DIR/bin/sensai"`만 호출한다. OpenCode `1.18.3` debug 초기화는 disposable config root에 `.gitignore`를 추가하므로 load 뒤에는 원래 37개 leaf의 byte 불변과 이 단일 추가 leaf를 분리해 검사한다.
+OpenCode `1.18.3` debug 초기화는 disposable config root에 `.gitignore`를 추가할 수 있으므로 load 뒤에는 managed 36개 leaf의 byte 불변과 알려진 추가 leaf를 분리해 검사한다. source checkout, 실제 HOME 또는 실제 global config에서 debug acceptance를 실행하지 않는다.
+
+## 실행 파일과 runtime asset 해석
+
+installed mode의 실행 파일은 regular executable `$HOME/.local/bin/sensai` 하나다. 절대 경로 호출과 `PATH` 호출은 해석 뒤 이 exact physical path여야 하며 symlink executable 또는 symlink parent를 거부한다. source mode는 checkout의 exact `<source>/bin/sensai`만 허용한다. source와 installed mode의 mission asset 선택은 같고 `stage`와 `install`만 source mode 전용이다.
+
+runtime global config root는 `OPENCODE_CONFIG_DIR`, `${XDG_CONFIG_HOME}/opencode`, `$HOME/.config/opencode` 순으로 선택한다. `opencode.json`과 `toolchain.lock.json`은 항상 이 global root에서 읽는다. mission schema·recipe는 각 요청 파일마다 다음 순서로 선택한다.
+
+1. project root는 absolute physical `SENSAI_PROJECT_ROOT`, 없으면 물리 CWD다.
+2. `<project>/.sensai/{schemas,recipes}/<file>`이 없으면 global config의 같은 상대 파일을 사용한다.
+3. project 파일이 존재하면 그것만 선택한다. invalid JSON/jq, symlink, directory 또는 비정규 파일이면 `runtime.asset_invalid`로 fail closed하고 global 파일로 fallback하지 않는다.
+4. 선택한 경로의 provenance는 `project` 또는 `global`이며 mission fingerprint에 반영한다.
+
+CWD는 project root의 기본값일 뿐 `output/` asset fallback이 아니다. 실행 파일 parent의 `output/`, `$HOME/.local/output`, source `output/`은 runtime fallback이 아니다.
 
 ## AGENTS와 instructions
 

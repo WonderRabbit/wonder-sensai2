@@ -2,14 +2,15 @@
 
 `wonder-sensai`는 legacy codebase를 AS-IS 분석하고 TO-BE 변경을 설계하는 OpenCode 하네스다. 모델의 문장을 사실로 채택하지 않고, 결정적 CLI·schema·validator가 확인한 `path:line` 근거와 안정 ID를 canonical trace에 남긴다.
 
-현재 checkout은 **RUNTIME_CLI + FILESYSTEM_PACKAGING + HERMETIC_LOAD** 단계다. 공개 계약, fail-closed test runner, root fixture corpus, canonical `output/` runtime, 정확히 2 agent·9 command·15 skill, schema·recipe, repository-side와 설치용 `bin/sensai`를 결합한 37-leaf root manifest가 있다. disposable target의 stage/install 계약과 격리한 macOS OpenCode `1.18.3` semantic load를 검증한다.
+현재 checkout은 **RUNTIME_CLI + GLOBAL_INSTALLER + HERMETIC_LOAD** 단계다. 공개 계약, fail-closed test runner, root fixture corpus, packaging source인 `output/`, 정확히 2 agent·9 command·15 skill, schema·recipe와 self-contained `bin/sensai`가 있다. `stage`의 36개 config payload, 기존 전역 OpenCode config에 합류하는 `install`, 외부 CLI, 격리한 macOS OpenCode `1.18.3` semantic load를 검증한다.
 
 제품 경계는 [제품 계약](docs/PROD.md), task 배치는 [R4 mapping](docs/r4-mapping.md), 충돌 해소는 [contract freeze](docs/harness/contract-freeze.md), runtime·검증·release 상태는 [runtime](docs/harness/runtime-contract.md), [verification](docs/harness/verification-contract.md), [release](docs/harness/release-contract.md), [implementation status](docs/harness/implementation-status.md)가 소유한다. `.gitignore` 대상인 `plan/prd/`의 정확히 27개 문서는 planning input이며 runtime authority가 아니다.
 
 ## 동결된 실행 경계
 
-- runtime source: `output/AGENTS.md`, `output/opencode.json`, `output/agents/`, `output/commands/`, `output/skills/`, `output/schemas/`, `output/recipes/`; `output/`이 유일한 canonical runtime root
-- repository-side: root `fixtures/`, `tests/`, `bin/`, `docs/`, `manifest.txt`; manifest leaf는 `output/` 기준 상대 경로이고 stage에서는 접두사를 제거한다.
+- packaging source: `output/AGENTS.md`, `output/opencode.json`, `output/agents/`, `output/commands/`, `output/skills/`, `output/schemas/`, `output/recipes/`; `output/`이 유일한 canonical packaging source root이며 실행 중 탐색 경로가 아니다.
+- repository-side: root `fixtures/`, `tests/`, `bin/`, `docs/`, `manifest.txt`; manifest는 `output/` 기준 36개 config leaf만 나열하고 CLI는 별도 관리한다.
+- installed topology: 기존 물리 디렉터리 `$HOME/.config/opencode` 아래 managed config leaf 36개와 실행 파일 `$HOME/.local/bin/sensai` 하나다.
 - payload topology target: exact 2 agents / 9 nested `sensai/*` commands / 15 skills
 - OpenCode load baseline: exact `1.18.3`
 - mission root: `docs/analysis/missions/<mission-id>/`
@@ -18,7 +19,7 @@
 - root `AGENTS.md`: contributor-only이며 fixture 계약을 설명한다. runtime prompt는 `output/AGENTS.md`이고 자동 로드를 가정하지 않는다.
 - output language: 사람이 읽는 제목·설명·지침·표시명은 한국어로 작성하고, 기계 key/schema field/ID/path/command/skill/enum/reason code/문법은 정확히 보존한다.
 
-`OPENCODE_CONFIG_DIR`는 다른 설정과 합쳐지는 overlay이므로 설정 격리를 보장하지 않는다. load 검증은 disposable stage, `HOME`, XDG 경로와 neutral working directory에서만 수행한다.
+`OPENCODE_CONFIG_DIR`는 다른 설정과 합쳐지는 overlay이므로 설정 격리를 보장하지 않는다. load 검증은 disposable stage, `HOME`, XDG 경로와 neutral working directory에서만 수행한다. 설치 위치는 이 변수와 무관하게 `$HOME/.config/opencode`와 `$HOME/.local/bin/sensai`로 고정된다.
 
 ## 모델과 agent 계약
 
@@ -34,21 +35,28 @@
 ## 빠른 시작
 
 ```sh
+./bin/sensai install
 ./bin/sensai doctor tools
 ./bin/sensai doctor models
 ./bin/sensai stage <absent-absolute-stage-path>
-./bin/sensai install <absent-absolute-config-path>
-./bin/sensai mission init sample-mission fixtures/legacy-project 'AS-IS 분석과 TO-BE 변경 설계'
-./bin/sensai mission status sample-mission
+$HOME/.local/bin/sensai doctor models
+$HOME/.local/bin/sensai mission init sample-mission fixtures/inputs/legacy-react 'AS-IS 분석과 TO-BE 변경 설계'
+$HOME/.local/bin/sensai mission status sample-mission
 ```
+
+`$HOME/.local/bin`이 `PATH`에 있으면 설치 뒤 `sensai doctor models`처럼 호출해도 같다. `PATH`가 가리키는 실제 실행 파일은 정확히 `$HOME/.local/bin/sensai`여야 하며 symlink는 거부한다. source checkout에서는 `./bin/sensai` 또는 그 절대 경로를 사용할 수 있다. source 호출과 installed 호출의 mission asset 선택은 같고, `stage`와 `install`만 source checkout 전용이다.
 
 `doctor tools`는 설치를 수행하지 않고 `opencode`, `fd`, `rg`, `sg`, `jq`, `yq`, `mdq`, `mmdc`의 실행 파일과 제품 식별을 확인한다. OpenCode는 정확히 `1.18.3`, `sg`는 ast-grep, `yq`는 Mike Farah 제품이어야 한다. `doctor models`는 자격증명 파일을 읽거나 모델을 호출하지 않고 canonical config와 toolchain lock의 정확한 alias·localhost transport 설정만 확인한다. 정상 출력 상태는 config discovery `READY`, lead/peer admission `UNVERIFIED`, `UNVERIFIED`다.
 
 미션 상태는 `docs/analysis/missions/<mission-id>/` 아래 `trace.json`, `progress.json`, `status.md`로만 생성된다. `mission checkpoint`와 `mission resume`은 schema·recipe, 현재 revision과 SHA-256, 동일 미션 잠금을 확인하고 같은 디렉터리의 임시 파일을 원자적으로 rename한다. 사용자 인자는 데이터로만 다루며 셸 코드로 실행하지 않는다.
 
-CLI 종료 코드는 `0` 성공, `64` 사용법 오류, `65` 입력·설정·제품 식별 오류, `69` 필수 도구 또는 transport 사용 불가, `75` lock·revision·hash 충돌이다. 이는 테스트 러너의 assertion `1`과 infrastructure `70` 계약과 별개다.
+CLI 종료 코드는 `0` 성공, `64` 사용법 오류, `65` 입력·설정·제품 식별 오류, `69` 필수 도구 또는 transport 사용 불가, `73` stage 대상 생성 불가 또는 install managed 충돌, `75` lock·revision·hash 충돌이다. 이는 테스트 러너의 assertion `1`과 infrastructure `70` 계약과 별개다.
 
-`stage`와 `install`은 정렬·중복 없음·정규화된 37개 `manifest.txt` leaf를 부재 중인 절대 경로에 배치한다. 36개 canonical `output/` leaf는 접두사를 제거하고, repository-side `bin/sensai`는 설치 root의 실행 가능한 `bin/sensai`로 byte-exact 복사한다. source와 stage의 SHA-256이 모두 같아야 하며, 동일한 parent filesystem의 sibling 임시 디렉터리에서 완성한 뒤 한 번의 rename으로 공개한다. 대상이 이미 있으면 merge·overwrite·backup 없이 exit `73`으로 거부하고 기존 대상은 바꾸지 않는다.
+`stage <absent-absolute-stage-path>`는 `manifest.txt`의 36개 managed leaf를 부재한 절대 경로에 byte-exact 투영하며 CLI는 넣지 않는다. source와 stage의 SHA-256을 확인하고 같은 parent의 임시 sibling에서 완성한 뒤 한 번의 rename으로 공개한다. stage 대상이 이미 있으면 exit `73`으로 거부한다.
+
+`install`은 인자를 받지 않는다. 이미 존재하는 물리 디렉터리 `$HOME/.config/opencode` 아래에 36개 managed leaf를 파일 단위로 설치하고 `$HOME/.local/bin/sensai`를 실행 가능한 regular file로 게시한다. managed leaf나 CLI가 없으면 생성하고, source와 byte-equal인 regular file이면 no-op이다. 내용이 다르거나 symlink·directory·비정규 파일이면 쓰기 전에 `package.managed_conflict`, exit `73`으로 거부한다. config root의 기존 파일과 디렉터리 등 unmanaged content는 보존하며, 실패 시 이번 실행이 만든 expected-hash 파일과 빈 디렉터리만 회수한다.
+
+mission의 schema·recipe는 파일별로 `<project>/.sensai/{schemas,recipes}`를 먼저 보고 해당 파일이 없을 때만 runtime global config의 `{schemas,recipes}`로 fallback한다. project 파일이 존재하지만 invalid, symlink, directory이면 global 파일로 우회하지 않고 fail closed한다. `opencode.json`과 `toolchain.lock.json`은 global config에서만 읽는다. project root는 `SENSAI_PROJECT_ROOT` 또는 물리 CWD지만 CWD의 `output/`이나 `$HOME/.local/output`은 runtime fallback이 아니다.
 
 ## Command catalog 목표
 
@@ -155,7 +163,7 @@ macOS가 deterministic 구현과 QA의 현재 gate다. schema, jq recipe, fixtur
 - `all`: `tests/contracts/release-preflight.json`의 결정적 selector 53개를 각각 정확히 한 번 실행하고 각 current-fingerprint receipt를 다시 검증한다. 모델·TUI·live delegation·Windows 상태는 pass 수와 분리한다.
 - `expect-fail misleading-success-output`: 출력에 `PASS`가 있어도 실제 exit와 assertion receipt가 실패이면 release preflight가 거부하는 경우만 인정한다.
 - `docs`: Markdown 링크, exact 27 PRD, alias/catalog/model/version/category/platform/status 계약과 대립 mutation을 확인한다.
-- `catalog-oracle`: `output/` 상대 literal 2 agents/9 commands/15 skills/2 schemas/5 recipes와 설치 CLI를 합친 37-leaf manifest target, root/runtime 분리, 27 PRD topology parity를 확인한다.
+- `catalog-oracle`: `output/` 상대 literal 2 agents/9 commands/15 skills/2 schemas/5 recipes, 36-leaf config manifest와 별도 CLI, root/runtime 분리, 27 PRD topology parity를 확인한다.
 - `schema-trace`: trace 2.0 schema, 고정 golden, 상태·결합 관계와 단일 필드 mutation의 jq 동등성을 확인한다.
 - `expect-fail trace-dangling-id`: 격리한 유효 원장에 dangling evidence ID 하나를 주입하고 `trace.reference_integrity` 실패만 인정한다.
 - `recipe-trace`: trace의 전역 ID·직접 근거·exact join·mapping·binding, glossary 근거, 1.0→2.0 보존과 재실행 안정성을 확인한다.
@@ -173,12 +181,12 @@ macOS가 deterministic 구현과 QA의 현재 gate다. schema, jq recipe, fixtur
 - `expect-fail forbidden-mcp-config`: 격리한 config에 금지된 `mcp` key 하나를 추가하고 `permissions.forbidden_extension_config` 실패만 인정한다.
 - `doctor`: 실제 도구 제품·OpenCode 1.18.3, 모델의 `READY/UNVERIFIED/UNVERIFIED`, 미션 init/status/checkpoint/resume의 path·schema·CAS·원자성과 종료 코드를 확인한다.
 - `expect-fail wrong-yq-product`: 격리 PATH의 Python 계열 yq를 Mike Farah 제품으로 오인하지 않고 exit `65`와 `tool.identity_mismatch`로 거부하는 경우만 인정한다.
-- `packaging`: root manifest의 37-leaf exact-set, source/stage hash, 설치 `bin/sensai`의 byte·실행 mode와 실제 mission init/status, 동일 parent 원자 이동과 source 불변을 확인한다.
-- `expect-fail existing-install-target`: 기존 대상에 대한 exit `73`과 byte-exact 보존만 성공적인 거부로 인정한다.
+- `packaging`: 36-leaf config manifest, source/stage hash, 기존 global config의 unmanaged 보존, equal managed no-op, 외부 `$HOME/.local/bin/sensai`의 byte·실행 mode와 실제 mission init/status를 확인한다.
+- `expect-fail existing-install-target`: differing managed leaf나 CLI 충돌의 exit `73`과 기존 global tree의 byte-exact 보존만 성공적인 거부로 인정한다.
 - `expect-fail stale-catalog-doc`: isolated source copy에 stale catalog 항목을 넣고 named semantic assertion failure를 확인한다.
 - `core-readiness`: runtime AGENTS/config/toolchain, 2/9/15 payload, schema/recipe, fixture, root manifest와 CLI가 모두 존재하는지 확인한다.
 - `continuity`: 격리 mission 저장소에서 초기화, 체크포인트, 중단, 새 프로세스 재개, 단일 작성자와 F0/F3/F5 hard gate를 검증한다.
-- `opencode-load`: 37-leaf payload를 disposable config에 stage하고 격리한 `HOME`·XDG·`TMPDIR`·중립 CWD에서 OpenCode `1.18.3` debug load를 두 번 실행해 설치 CLI, 2 agent·9 nested command·15 skill, config binding, idempotence, source·실제 global 불변과 알려진 초기화 파일만 확인한다. full resolved config와 모델 응답은 저장하지 않는다.
+- `opencode-load`: 36-leaf config payload와 별도 설치 CLI를 disposable `HOME`에 배치하고 XDG·`TMPDIR`·중립 CWD에서 OpenCode `1.18.3` debug load를 실행해 2 agent·9 nested command·15 skill, config binding, idempotence와 알려진 초기화 파일만 확인한다. full resolved config와 모델 응답은 저장하지 않는다.
 - `expect-fail inherited-config-sentinel`: disposable global config에 유효한 sentinel과 추가 command를 주입하고 merged overlay가 `opencode-load.inherited_sentinel`로 거부되는 경우만 인정한다.
 
 증거는 명시한 `--evidence` 디렉터리에 source fingerprint, assertion, command exit, reason, cleanup과 함께 기록한다. exit `64`는 usage, `70`은 test infrastructure 문제이며 의도한 RED로 인정하지 않는다.

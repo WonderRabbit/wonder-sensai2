@@ -2,11 +2,11 @@
 
 ## 현재 상태
 
-이 문서는 27개 PRD에서 제품 경계와 입학 조건을 복구한 source-owned 상위 계약이다. 현재 저장소에는 `output/AGENTS.md`, baseline `output/opencode.json`, fixture/test/catalog가 있지만 나머지 runtime leaf는 아직 없으며, 본 문서의 존재는 구현·모델·Windows 호환성 완료를 뜻하지 않는다.
+이 문서는 27개 PRD에서 제품 경계와 입학 조건을 복구한 source-owned 상위 계약이다. 현재 저장소에는 36개 config payload, global installer, 외부 CLI, schema·recipe·agent·command·skill과 결정적 검증이 있다. 이 구현은 live 모델 또는 Windows 호환성 완료를 뜻하지 않는다.
 
 | 상태 축 | 현재 값 | 의미 |
 | --- | --- | --- |
-| `LOCAL_IMPLEMENTATION` | `OUTPUT_TOPOLOGY_AND_FIXTURES` | runtime root와 fixture/test/catalog는 있으나 agent/command/skill/schema/recipe/load는 미완료다. |
+| `LOCAL_IMPLEMENTATION` | `GLOBAL_INSTALLER_READY` | 36개 managed config leaf, 외부 CLI, project/global overlay와 결정적 load가 구현됐다. |
 | `MODEL_ADMISSION` | `UNVERIFIED` | 별칭 발견·로드 값은 정했지만 live 응답과 tool call은 검증하지 않았다. |
 | `WINDOWS_RECEIPT` | `PENDING_USER_RECEIPT` | Windows 검증은 구현의 선행 조건이 아니라 최종 사용자 실행 영수증이다. |
 
@@ -17,10 +17,13 @@
 제품 구현 기준은 다음과 같다.
 
 - OpenCode 기준 버전은 `1.18.3`이다.
-- 설치 가능한 runtime source는 단일 `output/` root다. root duplicate와 `.opencode/` 복사본을 함께 유지하지 않는다.
-- runtime leaf는 `output/AGENTS.md`, `output/opencode.json`, `output/agents/`, `output/commands/`, `output/skills/`, `output/schemas/`, `output/recipes/`다.
+- `output/`은 설치 payload의 단일 packaging source다. runtime asset 탐색은 이 디렉터리나 실행 파일 parent로 fallback하지 않는다.
+- packaging leaf는 `output/AGENTS.md`, `output/opencode.json`, `output/agents/`, `output/commands/`, `output/skills/`, `output/schemas/`, `output/recipes/`, `output/toolchain.lock.json` 아래 정확히 36개다.
 - output의 사람이 읽는 제목·설명·지침·표시명은 한국어로 작성하고 기계 key/schema field/ID/path/command/skill/enum/reason code/문법은 원형을 보존한다.
-- root `manifest.txt`는 `output/` 상대 leaf를 나열하고 stage/install은 `output/` 접두사 없이 config root에 배치한다.
+- root `manifest.txt`는 `output/` 상대 managed config leaf 36개를 나열한다. `stage`는 부재한 절대 target에 이 leaf만 투영하고, `install`은 기존 `$HOME/.config/opencode`에 파일 단위로 합류시킨다.
+- installed CLI는 config root 밖의 `$HOME/.local/bin/sensai` 하나다. `install`은 인자를 받지 않고 source checkout에서만 실행된다.
+- managed leaf나 CLI가 없으면 설치하고 byte-equal regular file이면 no-op이다. differing regular file, symlink, directory와 비정규 파일은 pre-write conflict이며 unmanaged content는 보존한다.
+- runtime schema·recipe는 project `.sensai/{schemas,recipes}`의 같은 상대 파일을 우선하고 project 파일이 없을 때만 global config의 파일로 fallback한다. present-invalid project 파일은 fail closed한다.
 - 목표 exact-set은 agent 2개, `sensai/*` command 9개, skill 15개다.
 - fixture의 canonical source는 루트 `fixtures/`다.
 - mission 상태와 산출물의 유일한 루트는 `docs/analysis/missions/<mission-id>/`다.
@@ -74,7 +77,7 @@ hard gate는 F0, F3, F5, 일관성 violation, 후보 admission이다. lead는 F0
 - plugin, MCP, custom tool, codegraph 상시 경로
 - Yeoman 또는 코드 생성
 - live model call, 자격 증명 복사, raw model transcript 저장
-- 실제 전역 OpenCode 설정 수정
+- managed 범위 밖의 전역 OpenCode 설정 수정 또는 기존 content 덮어쓰기
 - commit, tag, push, publish
 
 루트 `AGENTS.md`는 저장소 기여자와 fixture 관리 계약이다. runtime prompt는 `output/AGENTS.md`이며 staged config에서 자동 로드된다고 가정하지 않고, runtime 불변조건은 source-owned config, agent, command, skill에도 직접 둔다. 절대 경로의 `instructions` 의존은 허용하지 않는다.
