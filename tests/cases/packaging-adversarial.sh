@@ -205,6 +205,9 @@ case_packaging_adversarial() {
   packaging_adversarial_run_source_leaf_cases || return 70
   packaging_adversarial_run_drift_cases || return 70
   packaging_adversarial_run_install_fault_case || return 70
+  packaging_adversarial_run_preexisting_directory_cases || return 70
+  packaging_adversarial_run_rollback_drift_case || return 70
+  packaging_adversarial_run_publish_ownership_cases || return 70
   packaging_adversarial_run_lock_interrupt_and_atomic_cases || return 70
   packaging_adversarial_run_loader_metadata_case || return 70
   packaging_adversarial_finalize || return 70

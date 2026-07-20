@@ -1,5 +1,7 @@
 #!/bin/sh
 
+. "$SCRIPT_DIR/cases/packaging/global-install.sh"
+
 packaging_tree_hashes() {
   PACKAGING_HASH_ROOT=$1
   PACKAGING_HASH_DEST=$2
@@ -87,29 +89,6 @@ packaging_assert_output_literal_contract() {
   fi
 }
 
-packaging_run_global_install_probe() {
-  PACKAGING_GLOBAL_HOME=$1
-  PACKAGING_GLOBAL_OUT=$2
-  PACKAGING_GLOBAL_ERR=$3
-  PACKAGING_GLOBAL_CONFIG=$PACKAGING_GLOBAL_HOME/.config/opencode
-  PACKAGING_GLOBAL_CLI=$PACKAGING_GLOBAL_HOME/.local/bin/sensai
-  mkdir -p "$PACKAGING_GLOBAL_CONFIG" "$PACKAGING_GLOBAL_HOME/.local/bin" || return 70
-  printf '%s\n' '보존해야 하는 비관리 파일' >"$PACKAGING_GLOBAL_CONFIG/unmanaged.txt" || return 70
-  cp "$SOURCE_ROOT/output/AGENTS.md" "$PACKAGING_GLOBAL_CONFIG/AGENTS.md" || return 70
-  tooling_sha256_file "$PACKAGING_GLOBAL_CONFIG/unmanaged.txt" || return 70
-  PACKAGING_GLOBAL_SENTINEL_BEFORE=$TOOLING_SHA256
-  tooling_sha256_file "$PACKAGING_GLOBAL_CONFIG/AGENTS.md" || return 70
-  PACKAGING_GLOBAL_EQUAL_BEFORE=$TOOLING_SHA256
-  set +e
-  env -u OPENCODE_CONFIG_DIR -u XDG_CONFIG_HOME HOME="$PACKAGING_GLOBAL_HOME" \
-    "$SOURCE_ROOT/bin/sensai" install >"$PACKAGING_GLOBAL_OUT" 2>"$PACKAGING_GLOBAL_ERR"
-  PACKAGING_GLOBAL_RC=$?
-  tooling_sha256_file "$PACKAGING_GLOBAL_CONFIG/unmanaged.txt" || return 70
-  PACKAGING_GLOBAL_SENTINEL_AFTER=$TOOLING_SHA256
-  tooling_sha256_file "$PACKAGING_GLOBAL_CONFIG/AGENTS.md" || return 70
-  PACKAGING_GLOBAL_EQUAL_AFTER=$TOOLING_SHA256
-}
-
 case_packaging() {
   CASE_TOTAL=$((CASE_TOTAL + 1))
   PACKAGING_ROOT=$RUN_TMP/packaging
@@ -153,30 +132,24 @@ case_packaging() {
     fi
   fi
 
-  PACKAGING_GLOBAL_HOME=$PACKAGING_ROOT/global-home
-  packaging_run_global_install_probe "$PACKAGING_GLOBAL_HOME" \
-    "$RUN_TMP/packaging-global-install.out" "$RUN_TMP/packaging-global-install.err" || return 70
-  evidence_log_command packaging-global-install \
-    'HOME=<isolated-home> ./bin/sensai install' "$PACKAGING_GLOBAL_RC"
-  assert_eq packaging.global_install_exit 0 "$PACKAGING_GLOBAL_RC" || true
-  assert_eq packaging.global_unmanaged_preserved \
-    "$PACKAGING_GLOBAL_SENTINEL_BEFORE" "$PACKAGING_GLOBAL_SENTINEL_AFTER" || true
-  assert_eq packaging.global_equal_preserved \
-    "$PACKAGING_GLOBAL_EQUAL_BEFORE" "$PACKAGING_GLOBAL_EQUAL_AFTER" || true
-  if test "$PACKAGING_GLOBAL_RC" -eq 0; then
-    packaging_tree_hashes "$PACKAGING_GLOBAL_CONFIG" \
-      "$RUN_TMP/packaging-global-install.sha256" || return 70
-    if cmp -s "$RUN_TMP/packaging-source.sha256" "$RUN_TMP/packaging-global-install.sha256"; then
-      assert_record packaging.global_hashes 0 '36개 managed leaf가 source와 byte-equal하다' || true
-    else
-      assert_record packaging.global_hashes 1 'global managed leaf hash가 source와 다르다' || true
-    fi
-    if test -f "$PACKAGING_GLOBAL_CLI" && ! test -L "$PACKAGING_GLOBAL_CLI" && \
-       test -x "$PACKAGING_GLOBAL_CLI" && cmp -s "$SOURCE_ROOT/bin/sensai" "$PACKAGING_GLOBAL_CLI"; then
-      assert_record packaging.global_cli 0 '단일 global CLI가 실행 가능하고 source와 byte-equal하다' || true
-    else
-      assert_record packaging.global_cli 1 'global CLI byte 또는 실행 mode가 다르다' || true
-    fi
+  packaging_assert_global_install || return 70
+
+  PACKAGING_SPECIAL_SOURCE="$PACKAGING_ROOT/source [#&]"
+  PACKAGING_SPECIAL_STAGE="$PACKAGING_ROOT/special-stage"
+  mkdir -p "$PACKAGING_SPECIAL_SOURCE/bin" "$PACKAGING_SPECIAL_SOURCE/output" || return 70
+  cp "$SOURCE_ROOT/bin/sensai" "$PACKAGING_SPECIAL_SOURCE/bin/sensai" || return 70
+  cp "$SOURCE_ROOT/manifest.txt" "$PACKAGING_SPECIAL_SOURCE/manifest.txt" || return 70
+  cp -R "$SOURCE_ROOT/output/." "$PACKAGING_SPECIAL_SOURCE/output" || return 70
+  chmod 755 "$PACKAGING_SPECIAL_SOURCE/bin/sensai" || return 70
+  set +e
+  "$PACKAGING_SPECIAL_SOURCE/bin/sensai" stage "$PACKAGING_SPECIAL_STAGE" \
+    >"$RUN_TMP/packaging-special-source.out" 2>"$RUN_TMP/packaging-special-source.err"
+  PACKAGING_SPECIAL_RC=$?
+  assert_eq packaging.special_source_path_exit 0 "$PACKAGING_SPECIAL_RC" || true
+  if test "$PACKAGING_SPECIAL_RC" -eq 0; then
+    packaging_assert_exact_tree packaging.special_source "$PACKAGING_SPECIAL_STAGE" \
+      "$RUN_TMP/packaging-special-stage.leaves" \
+      "$RUN_TMP/packaging-special-stage.sha256" || return 70
   fi
 
   if ! find "$PACKAGING_ROOT" \
@@ -203,13 +176,6 @@ case_packaging() {
     --argjson exit "$PACKAGING_STAGE_RC" --argjson count 36 \
     '{target:$target,exit:$exit,leaf_count:$count,payload_sha256:$payload_sha256,output_prefix:false,runtime_agents:true,installed_cli:false}' \
     >"$EVIDENCE_DIR/stage-tree.json" || return 70
-  jq -n --arg home "$PACKAGING_GLOBAL_HOME" --arg config_root "$PACKAGING_GLOBAL_CONFIG" \
-    --arg cli "$PACKAGING_GLOBAL_CLI" --argjson exit "$PACKAGING_GLOBAL_RC" \
-    --arg unmanaged_before "$PACKAGING_GLOBAL_SENTINEL_BEFORE" \
-    --arg unmanaged_after "$PACKAGING_GLOBAL_SENTINEL_AFTER" \
-    --arg equal_before "$PACKAGING_GLOBAL_EQUAL_BEFORE" --arg equal_after "$PACKAGING_GLOBAL_EQUAL_AFTER" \
-    '{home:$home,config_root:$config_root,cli:$cli,exit:$exit,managed_leaves:36,unmanaged_preserved:($unmanaged_before==$unmanaged_after),preexisting_equal_preserved:($equal_before==$equal_after)}' \
-    >"$EVIDENCE_DIR/global-install.json" || return 70
   jq -n --arg bin_sha256 "$PACKAGING_BIN_BEFORE" \
     --arg manifest_sha256 "$PACKAGING_MANIFEST_SHA" --arg payload_sha256 "$PACKAGING_SOURCE_SHA" \
     '{bin_sha256:$bin_sha256,manifest_sha256:$manifest_sha256,payload_sha256:$payload_sha256}' \

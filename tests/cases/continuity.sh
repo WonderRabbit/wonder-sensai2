@@ -355,6 +355,111 @@ continuity_runtime_executable_symlink_case() {
   fi
 }
 
+continuity_runtime_bare_source_rejection_case() {
+  CONTINUITY_BARE_ROOT=$CONTINUITY_RUNTIME/bare-source
+  CONTINUITY_BARE_PROJECT=$CONTINUITY_RUNTIME/bare-project
+  mkdir -p "$CONTINUITY_BARE_ROOT/bin" || return 70
+  cp "$SOURCE_ROOT/bin/sensai" "$CONTINUITY_BARE_ROOT/bin/sensai" || return 70
+  chmod 755 "$CONTINUITY_BARE_ROOT/bin/sensai" || return 70
+  continuity_project_init "$CONTINUITY_BARE_PROJECT" || return 70
+  set +e
+  "$CONTINUITY_BARE_ROOT/bin/sensai" help \
+    >"$RUN_TMP/runtime-bare-help.out" 2>"$RUN_TMP/runtime-bare-help.err"
+  CONTINUITY_BARE_HELP_RC=$?
+  if test "$CONTINUITY_BARE_HELP_RC" -eq 0; then
+    assert_record continuity.runtime_bare_help_asset_free 0 \
+      'help는 source manifest/output 없이 usage를 출력했다' || true
+  else
+    assert_record continuity.runtime_bare_help_asset_free 1 \
+      "rc=$CONTINUITY_BARE_HELP_RC bare help required source assets" || true
+  fi
+  set +e
+  "$CONTINUITY_BARE_ROOT/bin/sensai" doctor tools \
+    >"$RUN_TMP/runtime-bare-tools.out" 2>"$RUN_TMP/runtime-bare-tools.err"
+  CONTINUITY_BARE_TOOLS_RC=$?
+  case "$CONTINUITY_BARE_TOOLS_RC" in
+    0|65|69)
+      if rg -F -q --no-config '도구 tool=' "$RUN_TMP/runtime-bare-tools.out" \
+          "$RUN_TMP/runtime-bare-tools.err" && \
+         ! rg -F -q --no-config 'reason=runtime.executable_invalid' \
+           "$RUN_TMP/runtime-bare-tools.err"; then
+        assert_record continuity.runtime_bare_doctor_tools_asset_free 0 \
+          'doctor tools는 source asset과 무관하게 tool inventory를 실행했다' || true
+      else
+        assert_record continuity.runtime_bare_doctor_tools_asset_free 1 \
+          'doctor tools가 source admission에서 종료했다' || true
+      fi
+      ;;
+    *) assert_record continuity.runtime_bare_doctor_tools_asset_free 1 \
+         "unexpected_rc=$CONTINUITY_BARE_TOOLS_RC" || true ;;
+  esac
+  set +e
+  HOME="$CONTINUITY_RUNTIME_HOME" OPENCODE_CONFIG_DIR="$CONTINUITY_RUNTIME_CONFIG" \
+    SENSAI_PROJECT_ROOT="$CONTINUITY_BARE_PROJECT" \
+    "$CONTINUITY_BARE_ROOT/bin/sensai" mission init bare-source src rejected \
+    >"$RUN_TMP/runtime-bare-source.out" 2>"$RUN_TMP/runtime-bare-source.err"
+  CONTINUITY_RUNTIME_RC=$?
+  evidence_log_command runtime-bare-source \
+    '<bare-parent>/bin/sensai mission init <isolated-project>' "$CONTINUITY_RUNTIME_RC"
+  cp "$RUN_TMP/runtime-bare-source.out" "$EVIDENCE_DIR/runtime-bare-source.out" || return 70
+  cp "$RUN_TMP/runtime-bare-source.err" "$EVIDENCE_DIR/runtime-bare-source.err" || return 70
+  if test "$CONTINUITY_RUNTIME_RC" -eq 65 && \
+     rg -F -q --no-config 'reason=runtime.executable_invalid' \
+       "$RUN_TMP/runtime-bare-source.err" && \
+     test ! -e "$CONTINUITY_BARE_PROJECT/docs"; then
+    assert_record continuity.runtime_bare_source_rejected 0 \
+      'manifest/output 없는 bare source CLI를 mission mutation 전에 거부했다' || true
+  else
+    assert_record continuity.runtime_bare_source_rejected 1 \
+      "rc=$CONTINUITY_RUNTIME_RC bare source accepted or project mutated" || true
+  fi
+}
+
+continuity_runtime_source_exact_contract_cases() {
+  for CONTINUITY_SOURCE_CASE in missing extra malformed; do
+    CONTINUITY_SOURCE_ROOT=$CONTINUITY_RUNTIME/source-contract-$CONTINUITY_SOURCE_CASE
+    CONTINUITY_SOURCE_PROJECT=$CONTINUITY_RUNTIME/source-project-$CONTINUITY_SOURCE_CASE
+    mkdir -p "$CONTINUITY_SOURCE_ROOT/bin" "$CONTINUITY_SOURCE_ROOT/output" || return 70
+    cp "$SOURCE_ROOT/bin/sensai" "$CONTINUITY_SOURCE_ROOT/bin/sensai" || return 70
+    cp "$SOURCE_ROOT/manifest.txt" "$CONTINUITY_SOURCE_ROOT/manifest.txt" || return 70
+    cp -R "$SOURCE_ROOT/output/." "$CONTINUITY_SOURCE_ROOT/output" || return 70
+    chmod 755 "$CONTINUITY_SOURCE_ROOT/bin/sensai" || return 70
+    continuity_project_init "$CONTINUITY_SOURCE_PROJECT" || return 70
+    CONTINUITY_SOURCE_REASON=package.source_exact_set_mismatch
+    case "$CONTINUITY_SOURCE_CASE" in
+      missing) rm "$CONTINUITY_SOURCE_ROOT/output/AGENTS.md" || return 70 ;;
+      extra) printf '%s\n' 'unmanaged' >"$CONTINUITY_SOURCE_ROOT/output/extra.txt" || return 70 ;;
+      malformed)
+        LC_ALL=C sort -r "$CONTINUITY_SOURCE_ROOT/manifest.txt" \
+          >"$CONTINUITY_SOURCE_ROOT/manifest.tmp" || return 70
+        mv "$CONTINUITY_SOURCE_ROOT/manifest.tmp" \
+          "$CONTINUITY_SOURCE_ROOT/manifest.txt" || return 70
+        CONTINUITY_SOURCE_REASON=package.manifest_invalid
+        ;;
+    esac
+    set +e
+    HOME="$CONTINUITY_RUNTIME_HOME" OPENCODE_CONFIG_DIR="$CONTINUITY_RUNTIME_CONFIG" \
+      SENSAI_PROJECT_ROOT="$CONTINUITY_SOURCE_PROJECT" \
+      "$CONTINUITY_SOURCE_ROOT/bin/sensai" mission init \
+      "source-$CONTINUITY_SOURCE_CASE" src rejected \
+      >"$RUN_TMP/runtime-source-$CONTINUITY_SOURCE_CASE.out" \
+      2>"$RUN_TMP/runtime-source-$CONTINUITY_SOURCE_CASE.err"
+    CONTINUITY_RUNTIME_RC=$?
+    if test "$CONTINUITY_RUNTIME_RC" -eq 65 && \
+       rg -F -q --no-config "reason=$CONTINUITY_SOURCE_REASON" \
+         "$RUN_TMP/runtime-source-$CONTINUITY_SOURCE_CASE.err" && \
+       test ! -e "$CONTINUITY_SOURCE_PROJECT/docs"; then
+      assert_record "continuity.runtime_source_exact_$CONTINUITY_SOURCE_CASE" 0 \
+        "$CONTINUITY_SOURCE_CASE source contract를 project mutation 전에 거부했다" || true
+    else
+      assert_record "continuity.runtime_source_exact_$CONTINUITY_SOURCE_CASE" 1 \
+        "rc=$CONTINUITY_RUNTIME_RC reason=$CONTINUITY_SOURCE_REASON or project mutated" || true
+    fi
+    cp "$RUN_TMP/runtime-source-$CONTINUITY_SOURCE_CASE.err" \
+      "$EVIDENCE_DIR/runtime-source-$CONTINUITY_SOURCE_CASE.err" || return 70
+  done
+}
+
 continuity_runtime_missing_asset_case() {
   rm "$CONTINUITY_RUNTIME_CONFIG/toolchain.lock.json" || return 70
   continuity_runtime_installed_run runtime-missing "$CONTINUITY_RUNTIME_CONFIG" \
@@ -374,6 +479,8 @@ continuity_runtime_resolver_contract() {
   continuity_runtime_malformed_asset_cases || return 70
   continuity_runtime_mission_preflight_cases || return 70
   continuity_runtime_executable_symlink_case || return 70
+  continuity_runtime_bare_source_rejection_case || return 70
+  continuity_runtime_source_exact_contract_cases || return 70
   continuity_runtime_missing_asset_case || return 70
   OPENCODE_CONFIG_DIR=$CONTINUITY_RUNTIME_CONFIG
   export OPENCODE_CONFIG_DIR
