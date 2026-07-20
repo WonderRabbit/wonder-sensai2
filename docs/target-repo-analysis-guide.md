@@ -950,9 +950,30 @@ AS-IS는 `ui.md`, `sequence.mmd`, `dataflow.mmd`, `story.md` 네 출력이다. T
 
 먼저 사용 중인 OpenCode process가 config나 runtime state를 참조하지 않는지 확인한다. config payload와 persistent runtime `HOME`/XDG/data/cache/state/temp는 서로 다른 수명과 민감도를 가지므로 각각 퇴역해야 한다. config rename만으로 auth·database·cache가 퇴역했다고 간주하지 않는다.
 
+F절의 `env -i`는 그 뒤에 적힌 OpenCode child process에만 적용되며 parent shell의 환경을 바꾸지 않는다. 퇴역 명령은 OpenCode child와 그 안에서 연 shell을 모두 종료한 뒤, `HOME`과 active XDG·`TMPDIR`가 `$SENSAI_RUNTIME_ROOT` 밖에 있는 **외부 관리자 shell**에서 실행한다. runtime-owned `HOME`을 유지한 shell에서 exit `73`이 나는 것은 정상적인 자기 퇴역 방지다. 그 경우 guard를 우회하지 말고 해당 shell을 종료한 뒤 원래 관리자 shell에서 L절을 처음부터 다시 실행한다.
+
 다음 검사는 절대 경로의 모든 component가 물리 디렉터리인지 확인하고 `/`, trailing slash, `.`·`..`, 중복 slash와 symlink를 거부한다.
 
 ```sh
+test -n "${HOME:-}" || exit 73
+test -n "${SENSAI_RUNTIME_ROOT:-}" || exit 73
+for RETIRE_ACTIVE_ROOT in \
+  "$HOME" \
+  "${XDG_CONFIG_HOME:-}" \
+  "${XDG_DATA_HOME:-}" \
+  "${XDG_CACHE_HOME:-}" \
+  "${XDG_STATE_HOME:-}" \
+  "${TMPDIR:-}"; do
+  test -z "$RETIRE_ACTIVE_ROOT" && continue
+  case "$RETIRE_ACTIVE_ROOT" in
+    "$SENSAI_RUNTIME_ROOT"|"$SENSAI_RUNTIME_ROOT"/*)
+      printf '%s\n' \
+        "runtime 밖의 관리자 shell에서 퇴역을 실행하십시오" >&2
+      exit 73
+      ;;
+  esac
+done
+
 retire_root_is_safe() {
   test "$#" -eq 1 || return 1
   RETIRE_ROOT=$1
