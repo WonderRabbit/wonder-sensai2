@@ -45,28 +45,41 @@ release_preflight_write_external_statuses() {
 
 release_preflight_check_runtime_boundaries() {
   RELEASE_RUNTIME_CONFIG=$SOURCE_ROOT/output/opencode.json
-  if test "$(wc -l <"$SOURCE_ROOT/manifest.txt" | tr -d ' ')" -eq 37 && \
-     rg -q --no-config -x 'bin/sensai' "$SOURCE_ROOT/manifest.txt" && \
+  if test "$(wc -l <"$SOURCE_ROOT/manifest.txt" | tr -d ' ')" -eq 36 && \
+     ! rg -q --no-config -x 'bin/sensai' "$SOURCE_ROOT/manifest.txt" && \
      test -x "$SOURCE_ROOT/bin/sensai"; then
-    assert_record release-preflight.installed_cli_manifest 0 \
-      '37-leaf manifest가 실행 가능한 설치 CLI를 포함한다' || true
+    assert_record release-preflight.config_manifest_external_cli 0 \
+      'config manifest 36 leaf와 외부 실행 CLI가 분리됐다' || true
   else
-    assert_record release-preflight.installed_cli_manifest 1 \
-      '설치 CLI manifest 계약이 다르다' || true
+    assert_record release-preflight.config_manifest_external_cli 1 \
+      'config manifest 또는 외부 CLI 계약이 다르다' || true
+  fi
+
+  RELEASE_OUTPUT_LITERAL_COUNT=$(rg -o --no-config '\boutput\b' \
+    "$SOURCE_ROOT/bin/sensai" | wc -l | tr -d ' ') || return 70
+  RELEASE_RUNTIME_ROOT_TOKEN_COUNT=$(rg -o --no-config '\bRUNTIME_ROOT\b' \
+    "$SOURCE_ROOT/bin/sensai" | wc -l | tr -d ' ') || return 70
+  if test "$RELEASE_OUTPUT_LITERAL_COUNT" -eq 1 && \
+     test "$RELEASE_RUNTIME_ROOT_TOKEN_COUNT" -eq 0; then
+    assert_record release-preflight.packaging_runtime_path_separation 0 \
+      'packaging output token은 정확히 1개이고 RUNTIME_ROOT token은 0개다' || true
+  else
+    assert_record release-preflight.packaging_runtime_path_separation 1 \
+      "output_count=$RELEASE_OUTPUT_LITERAL_COUNT runtime_root_count=$RELEASE_RUNTIME_ROOT_TOKEN_COUNT" || true
   fi
 
   if jq -e '
-      .permission.bash["\"$OPENCODE_CONFIG_DIR/bin/sensai\" mission init *"] == "allow" and
-      .permission.bash["\"$OPENCODE_CONFIG_DIR/bin/sensai\" mission checkpoint *"] == "allow" and
-      .permission.bash["\"$OPENCODE_CONFIG_DIR/bin/sensai\" mission resume *"] == "allow" and
-      .permission.bash["\"$OPENCODE_CONFIG_DIR/bin/sensai\" mission status *"] == "allow"
+      .permission.bash["\"$HOME/.local/bin/sensai\" mission init *"] == "allow" and
+      .permission.bash["\"$HOME/.local/bin/sensai\" mission checkpoint *"] == "allow" and
+      .permission.bash["\"$HOME/.local/bin/sensai\" mission resume *"] == "allow" and
+      .permission.bash["\"$HOME/.local/bin/sensai\" mission status *"] == "allow"
     ' "$RELEASE_RUNTIME_CONFIG" >/dev/null 2>&1 && \
-     test "$(jq '[.permission.bash | to_entries[] | select(.value=="allow" and (.key | contains("$OPENCODE_CONFIG_DIR/bin/sensai")))] | length' "$RELEASE_RUNTIME_CONFIG")" -eq 4 && \
-     test "$(rg -l -F --no-config '"$OPENCODE_CONFIG_DIR/bin/sensai" mission ' \
+     test "$(jq '[.permission.bash | to_entries[] | select(.value=="allow" and (.key | startswith("\"$HOME/.local/bin/sensai\" mission ")))] | length' "$RELEASE_RUNTIME_CONFIG")" -eq 4 && \
+     test "$(rg -l -F --no-config '"$HOME/.local/bin/sensai" mission ' \
        "$SOURCE_ROOT/output/commands/sensai/run.md" \
        "$SOURCE_ROOT/output/commands/sensai/resume.md" \
        "$SOURCE_ROOT/output/commands/sensai/status.md" | wc -l | tr -d ' ')" -eq 3 && \
-     ! rg -q --no-config '(^|[^A-Z_])\./bin/sensai mission' "$SOURCE_ROOT/output/commands/sensai"; then
+     ! rg -q --no-config '\$OPENCODE_CONFIG_DIR[^[:space:]]*sensai|(^|[^A-Z_])\./bin/sensai mission' "$SOURCE_ROOT/output/commands/sensai"; then
     assert_record release-preflight.installed_cli_binding 0 \
       'slash command와 bash allow가 설치 CLI의 네 mission subcommand에만 결합됐다' || true
   else
@@ -109,6 +122,28 @@ release_preflight_check_runtime_boundaries() {
     assert_record release-preflight.delivery_value_proven_deny 1 \
       'delivery 후보 5 skill admission deny가 다르다' || true
   fi
+
+  RELEASE_LOAD_EVIDENCE=$EVIDENCE_DIR/cases/selector.opencode-load
+  assert_jq release-preflight.global_install_topology '
+    .opencode_version == "1.18.3" and .config_manifest_leaf_count == 36 and
+    .installed_cli.external_to_config == true and
+    .installed_cli.source_byte_identical == true and
+    .preexisting_config_root == true and .unmanaged.preserved == true and
+    .runtime_config.unchanged == true and .debug_projections == 1
+  ' "$RELEASE_LOAD_EVIDENCE/global-install-summary.json" || true
+  assert_jq release-preflight.project_global_provenance '
+    .absolute_invocation_exit == 0 and .path_invocation_exit == 0 and
+    .global_observed == "trace_schema=global progress_schema=global trace_recipe=global progress_recipe=global" and
+    .mixed_observed == "trace_schema=project progress_schema=global trace_recipe=global progress_recipe=project" and
+    .mixed_recipe_marker == true and .ambient_output_ignored == true and
+    .invalid_exit == 65 and .invalid_reason == "runtime.asset_invalid" and
+    .invalid_project_mutation == false
+  ' "$RELEASE_LOAD_EVIDENCE/runtime-provenance.json" || true
+  assert_jq release-preflight.present_invalid_receipt '
+    .exit == 65 and .reason == "runtime.asset_invalid" and
+    .detail == "schemas/trace.schema.json" and
+    .global_fallback == false and .project_mutation == false
+  ' "$RELEASE_LOAD_EVIDENCE/present-invalid.json" || true
 }
 
 release_preflight_fault_misleading_success() {
@@ -244,6 +279,10 @@ case_release_preflight() {
       and ([.cases[] | select(.category == "mutation")] | length) == 28
       and ([.cases[] | select(.argv[0] == "expect-fail")] | length) == 27
       and ([.cases[] | select(.argv[0] == "all")] | length) == 0
+      and ([.cases[] | select(
+        .id == "selector.opencode-load" and
+        .required_evidence == ["global-install-summary.json","runtime-provenance.json","present-invalid.json","global-safe-projection.json"]
+      )] | length) == 1
     ' "$RELEASE_PREFLIGHT_CONTRACT" >/dev/null 2>&1; then
     assert_record release-preflight.contract_exact 0 '53개 실행과 28개 mutation 범주가 중복 없이 고정됐다' || true
   else

@@ -26,7 +26,17 @@
     { "id": "selector.e2e-asis", "category": "projection", "argv": ["e2e-asis"] },
     { "id": "selector.e2e-tobe", "category": "projection", "argv": ["e2e-tobe"] },
     { "id": "selector.continuity", "category": "continuity", "argv": ["continuity"] },
-    { "id": "selector.opencode-load", "category": "load", "argv": ["opencode-load"] },
+    {
+      "id": "selector.opencode-load",
+      "category": "load",
+      "argv": ["opencode-load"],
+      "required_evidence": [
+        "global-install-summary.json",
+        "runtime-provenance.json",
+        "present-invalid.json",
+        "global-safe-projection.json"
+      ]
+    },
     { "id": "selector.core-readiness", "category": "source", "argv": ["core-readiness"] },
     { "id": "negative.core-not-ready", "category": "mutation", "argv": ["expect-fail", "core-not-ready"] },
     { "id": "negative.fixture-without-golden", "category": "mutation", "argv": ["expect-fail", "fixture-without-golden"] },
@@ -48,7 +58,7 @@
     { "id": "negative.command-design-without-binding", "category": "mutation", "argv": ["expect-fail", "command-design-without-binding"] },
     { "id": "negative.stale-resume-hash", "category": "mutation", "argv": ["expect-fail", "stale-resume-hash"] },
     { "id": "negative.wrong-yq-product", "category": "mutation", "argv": ["expect-fail", "wrong-yq-product"] },
-    { "id": "negative.existing-install-target", "category": "mutation", "argv": ["expect-fail", "existing-install-target"] },
+    { "id": "negative.managed-install-conflict", "category": "mutation", "argv": ["expect-fail", "managed-install-conflict"] },
     { "id": "negative.staged-byte-drift", "category": "mutation", "argv": ["expect-fail", "staged-byte-drift"] },
     { "id": "negative.asis-golden-drift", "category": "mutation", "argv": ["expect-fail", "asis-golden-drift"] },
     { "id": "negative.conflict-hidden-by-deliverable", "category": "mutation", "argv": ["expect-fail", "conflict-hidden-by-deliverable"] },

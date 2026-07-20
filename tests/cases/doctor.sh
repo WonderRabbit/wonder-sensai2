@@ -2,7 +2,8 @@
 
 doctor_run() {
   DOCTOR_CLI=$SOURCE_ROOT/bin/sensai
-  DOCTOR_BASE=$RUN_TMP/doctor
+  DOCTOR_RUN_TMP=$(CDPATH= cd -- "$RUN_TMP" 2>/dev/null && pwd -P) || return 70
+  DOCTOR_BASE=$DOCTOR_RUN_TMP/doctor
   DOCTOR_PROJECT=$DOCTOR_BASE/project
   mkdir -p "$DOCTOR_PROJECT/input" || return 70
   cp "$SOURCE_ROOT/README.md" "$DOCTOR_PROJECT/input/README.md" || return 70
@@ -216,11 +217,21 @@ doctor_run() {
     assert_record doctor.invalid_path_no_write 1 '잘못된 mission ID가 외부 파일을 썼다' || true
   fi
 
-  if rg -F -q --no-config '"$OPENCODE_CONFIG_DIR/bin/sensai" mission init' "$SOURCE_ROOT/output/commands/sensai/run.md" && \
-     rg -F -q --no-config '"$OPENCODE_CONFIG_DIR/bin/sensai" mission checkpoint' "$SOURCE_ROOT/output/commands/sensai/run.md" && \
-     rg -F -q --no-config '"$OPENCODE_CONFIG_DIR/bin/sensai" mission resume' "$SOURCE_ROOT/output/commands/sensai/resume.md" && \
-     rg -F -q --no-config '"$OPENCODE_CONFIG_DIR/bin/sensai" mission status' "$SOURCE_ROOT/output/commands/sensai/status.md" && \
-     ! rg -q --no-config '(^|[^A-Z_])\./bin/sensai mission' "$SOURCE_ROOT/output/commands/sensai"; then
+  DOCTOR_COMMAND_BINDINGS=$DOCTOR_BASE/command-bindings.txt
+  DOCTOR_EXPECTED_BINDINGS=$DOCTOR_BASE/expected-command-bindings.txt
+  rg -o --no-filename --no-config '`[^`]*sensai[^`]* mission (init|checkpoint|resume|status)[^`]*`' \
+    "$SOURCE_ROOT/output/commands/sensai/run.md" \
+    "$SOURCE_ROOT/output/commands/sensai/resume.md" \
+    "$SOURCE_ROOT/output/commands/sensai/status.md" | LC_ALL=C sort \
+    >"$DOCTOR_COMMAND_BINDINGS" || return 70
+  printf '%s\n' \
+    '`"$HOME/.local/bin/sensai" mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>`' \
+    '`"$HOME/.local/bin/sensai" mission init <mission-id> <target-relative-path> <goal>`' \
+    '`"$HOME/.local/bin/sensai" mission resume <mission-id> [<expected-revision> <expected-sha256>]`' \
+    '`"$HOME/.local/bin/sensai" mission status <mission-id>`' \
+    >"$DOCTOR_EXPECTED_BINDINGS" || return 70
+  if cmp -s "$DOCTOR_EXPECTED_BINDINGS" "$DOCTOR_COMMAND_BINDINGS" && \
+     ! rg -q --no-config '\$OPENCODE_CONFIG_DIR[^[:space:]]*sensai|(^|[^A-Z_])\./bin/sensai mission' "$SOURCE_ROOT/output/commands/sensai"; then
     assert_record doctor.command_binding 0 'run/resume/status command가 설치된 결정적 mission helper에 결합됐다' || true
   else
     assert_record doctor.command_binding 1 'command와 mission helper 결합이 빠졌다' || true
@@ -232,6 +243,7 @@ doctor_clone_runtime() {
   mkdir -p "$DOCTOR_CLONE/bin" "$DOCTOR_CLONE/output/recipes" || return 70
   cp "$SOURCE_ROOT/bin/sensai" "$DOCTOR_CLONE/bin/sensai" || return 70
   chmod 755 "$DOCTOR_CLONE/bin/sensai" || return 70
+  cp "$SOURCE_ROOT/manifest.txt" "$DOCTOR_CLONE/manifest.txt" || return 70
   cp "$SOURCE_ROOT/output/opencode.json" "$DOCTOR_CLONE/output/opencode.json" || return 70
   cp "$SOURCE_ROOT/output/toolchain.lock.json" "$DOCTOR_CLONE/output/toolchain.lock.json" || return 70
   cp "$SOURCE_ROOT/output/recipes/trace.jq" "$DOCTOR_CLONE/output/recipes/trace.jq" || return 70

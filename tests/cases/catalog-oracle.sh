@@ -116,13 +116,8 @@ catalog_check_physical_trees() {
       break
     fi
   done
-  if test "$CATALOG_OUTPUT_TREE_OK" -eq 1 && \
-     ! catalog_path_chain_is_physical "$SOURCE_ROOT/bin/sensai" file; then
-    test "$?" -ne 70 || return 70
-    CATALOG_OUTPUT_TREE_OK=0
-  fi
   if test "$CATALOG_OUTPUT_TREE_OK" -eq 1; then
-    assert_record catalog.output_physical_tree 0 'output and current runtime leaves have physical non-symlink components' || true
+    assert_record catalog.output_physical_tree 0 'output config leaves have physical non-symlink components' || true
   else
     assert_record catalog.output_physical_tree 1 "reason=$CATALOG_CHAIN_REASON" || true
   fi
@@ -180,7 +175,7 @@ catalog_check_manifest() {
     assert_record catalog.manifest_safe_paths 1 'unsafe manifest path' || true
   fi
   {
-    printf '%s\n' AGENTS.md bin/sensai opencode.json toolchain.lock.json
+    printf '%s\n' AGENTS.md opencode.json toolchain.lock.json
     for CATALOG_MANIFEST_KIND in agents commands skills schemas recipes; do
       catalog_write_expected "$CATALOG_MANIFEST_KIND" "$RUN_TMP/catalog-manifest-$CATALOG_MANIFEST_KIND.txt" || exit 70
       sed -n 'p' "$RUN_TMP/catalog-manifest-$CATALOG_MANIFEST_KIND.txt"
@@ -191,10 +186,9 @@ catalog_check_manifest() {
   else
     assert_record catalog.manifest_union 1 'manifest/catalog union drift' || true
   fi
-  assert_eq catalog.manifest_count 37 "$(wc -l <"$CATALOG_MANIFEST" | tr -d ' ')" || true
+  assert_eq catalog.manifest_count 36 "$(wc -l <"$CATALOG_MANIFEST" | tr -d ' ')" || true
   if awk '
-      $0 ~ /^(fixtures|tests|docs|manifest\.txt)(\/|$)/ ||
-      ($0 ~ /^bin\// && $0 != "bin/sensai") {bad=1}
+      $0 ~ /^(bin|fixtures|tests|docs|manifest\.txt)(\/|$)/ {bad=1}
       END {exit bad ? 0 : 1}
     ' "$CATALOG_MANIFEST"; then
     assert_record catalog.manifest_repo_separation 1 'repository-side asset included in runtime manifest' || true
@@ -650,6 +644,11 @@ catalog_run_adversarial_matrix() {
   printf '%s\n' fixtures/CASES.json >>"$CATALOG_ROOT/tests/contracts/manifest.txt" || return 70
   LC_ALL=C sort -u "$CATALOG_ROOT/tests/contracts/manifest.txt" >"$CATALOG_ROOT/tests/contracts/manifest.tmp" && mv "$CATALOG_ROOT/tests/contracts/manifest.tmp" "$CATALOG_ROOT/tests/contracts/manifest.txt" || return 70
   catalog_run_mutation repo_asset catalog.manifest_repo_separation "$CATALOG_ROOT"
+
+  CATALOG_ROOT="$CATALOG_ADV/cli-in-manifest"; catalog_clone_source "$CATALOG_ROOT" || return 70
+  printf '%s\n' bin/sensai >>"$CATALOG_ROOT/tests/contracts/manifest.txt" || return 70
+  LC_ALL=C sort -u "$CATALOG_ROOT/tests/contracts/manifest.txt" >"$CATALOG_ROOT/tests/contracts/manifest.tmp" && mv "$CATALOG_ROOT/tests/contracts/manifest.tmp" "$CATALOG_ROOT/tests/contracts/manifest.txt" || return 70
+  catalog_run_mutation cli_in_manifest catalog.manifest_repo_separation "$CATALOG_ROOT"
 
   CATALOG_ROOT="$CATALOG_ADV/union-drift"; catalog_clone_source "$CATALOG_ROOT" || return 70
   sed '/^toolchain\.lock\.json$/d' "$CATALOG_ROOT/tests/contracts/manifest.txt" >"$CATALOG_ROOT/tests/contracts/manifest.tmp" && mv "$CATALOG_ROOT/tests/contracts/manifest.tmp" "$CATALOG_ROOT/tests/contracts/manifest.txt" || return 70

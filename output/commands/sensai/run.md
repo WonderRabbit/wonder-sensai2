@@ -10,7 +10,7 @@ subtask: false
 
 ## F0 시작 선행조건
 
-결정적 파일 초기화는 대상 저장소에서 `"$OPENCODE_CONFIG_DIR/bin/sensai" mission init <mission-id> <target-relative-path> <goal>`을 호출해 수행한다. `OPENCODE_CONFIG_DIR`가 비어 있거나 절대 경로가 아니거나 설치된 `bin/sensai`가 정규 실행 파일이 아니면 중단한다. 인자는 데이터로만 전달하고 사용자가 준 문자열을 다시 셸 코드로 조립하지 않는다. `CLI`가 `exit` `0`과 `INITIALIZED` 영수증을 반환하기 전에는 모델이 같은 파일을 대신 만들지 않는다.
+결정적 파일 초기화는 대상 저장소에서 `"$HOME/.local/bin/sensai" mission init <mission-id> <target-relative-path> <goal>`을 호출해 수행한다. `HOME`이 비어 있거나 절대 경로가 아니면 중단한다. 정확한 `"$HOME/.local/bin/sensai"`가 정규 실행 파일이 아니거나 `CLI`가 설치된 `runtime root`를 검증하지 못하면 중단한다. 인자는 데이터로만 전달하고 사용자가 준 문자열을 다시 셸 코드로 조립하지 않는다. `CLI`가 `exit` `0`과 `INITIALIZED` 영수증을 반환하기 전에는 모델이 같은 파일을 대신 만들지 않는다.
 
 다음 조건을 모두 통과하기 전에는 미션 파일을 쓰지 마라.
 
@@ -57,7 +57,7 @@ subtask: false
 5. 검증 성공 뒤에만 같은 미션 디렉터리의 임시 파일을 원자적 rename하여 `progress.json`을 교체한다. 부분 파일이나 미검증 후보를 정규 경로에 남기지 않는다.
 6. `progress.jq` `status` 모드의 출력으로 `status.md`를 생성하고, 마지막으로 세션 todo를 갱신한다.
 
-검증된 후보 `progress`를 반영할 때는 `"$OPENCODE_CONFIG_DIR/bin/sensai" mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>`을 사용한다. `exit` `75`는 다른 작성자가 먼저 갱신했거나 잠금이 있다는 뜻이므로 덮어쓰기나 자동 재시도를 하지 않는다.
+검증된 후보 `progress`를 반영할 때는 `"$HOME/.local/bin/sensai" mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>`을 사용한다. `exit` `75`는 다른 작성자가 먼저 갱신했거나 잠금이 있다는 뜻이므로 덮어쓰기나 자동 재시도를 하지 않는다.
 
 진실 우선순위는 검증된 `trace.json` > 검증된 `progress.json` > 파생 `status.md` > 세션 `todo`다. `status.md`나 `todo`를 원장 또는 `progress`보다 먼저 쓰거나, 서로 다를 때 하위 뷰를 진실로 채택하지 마라.
 
