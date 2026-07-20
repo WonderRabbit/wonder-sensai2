@@ -12,6 +12,7 @@ subtask: false
 
 다음 조건을 모두 통과하기 전에는 파일을 쓰지 마라.
 
+- `sensai-requirement-analyze`와 `sensai-change-design`이 `VALUE_PROVEN` 입학 영수증에 결합돼 `permission.skill`에서 명시적으로 허용돼야 한다. 현재 정확한 `deny` 상태에서는 `MODEL_ADMISSION_UNVERIFIED`를 보고하고 F4 실시간 실행을 중단한다.
 - `<mission-id>`는 `^[a-z0-9]+(-[a-z0-9]+)*$`를 만족하고 정규 미션 루트가 심볼릭 링크나 다른 미션으로 해석되지 않아야 한다.
 - 현재 `source fingerprint`에 결합된 `F3` 사람 승인 상태가 `accepted`여야 한다. 사람이 남긴 승인과 현재 지문이 없거나 다르면 `tobe-before-asis-accept`로 중단하고 TO-BE를 쓰지 않는다.
 - `F1` 기술 컨벤션과 `F2` 비즈니스 사실이 있는 `kind: asis` 원장, AS-IS 4종 산출, `trace schema`와 `trace.jq`의 `exit 0` 영수증을 확인한다.

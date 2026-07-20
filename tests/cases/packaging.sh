@@ -5,9 +5,16 @@ packaging_tree_hashes() {
   PACKAGING_HASH_DEST=$2
   : >"$PACKAGING_HASH_DEST" || return 70
   while IFS= read -r PACKAGING_HASH_ENTRY; do
-    test -f "$PACKAGING_HASH_ROOT/$PACKAGING_HASH_ENTRY" && \
-      ! test -L "$PACKAGING_HASH_ROOT/$PACKAGING_HASH_ENTRY" || return 1
-    tooling_sha256_file "$PACKAGING_HASH_ROOT/$PACKAGING_HASH_ENTRY" || return 70
+    if test "$PACKAGING_HASH_ROOT" = "$SOURCE_ROOT"; then
+      case "$PACKAGING_HASH_ENTRY" in
+        bin/sensai) PACKAGING_HASH_PATH=$SOURCE_ROOT/bin/sensai ;;
+        *) PACKAGING_HASH_PATH=$SOURCE_ROOT/output/$PACKAGING_HASH_ENTRY ;;
+      esac
+    else
+      PACKAGING_HASH_PATH=$PACKAGING_HASH_ROOT/$PACKAGING_HASH_ENTRY
+    fi
+    test -f "$PACKAGING_HASH_PATH" && ! test -L "$PACKAGING_HASH_PATH" || return 1
+    tooling_sha256_file "$PACKAGING_HASH_PATH" || return 70
     printf '%s  %s\n' "$TOOLING_SHA256" "$PACKAGING_HASH_ENTRY" \
       >>"$PACKAGING_HASH_DEST" || return 70
   done <"$SOURCE_ROOT/manifest.txt"
@@ -32,7 +39,7 @@ packaging_assert_exact_tree() {
   else
     assert_record "$PACKAGING_ASSERT_PREFIX.exact_set" 1 'manifest와 stage leaf exact-set이 다르다' || true
   fi
-  assert_eq "$PACKAGING_ASSERT_PREFIX.leaf_count" 36 \
+  assert_eq "$PACKAGING_ASSERT_PREFIX.leaf_count" 37 \
     "$(wc -l <"$PACKAGING_ASSERT_INVENTORY" | tr -d ' ')" || true
   if packaging_tree_hashes "$PACKAGING_ASSERT_ROOT" "$PACKAGING_ASSERT_HASHES"; then
     if cmp -s "$RUN_TMP/packaging-source.sha256" "$PACKAGING_ASSERT_HASHES"; then
@@ -49,10 +56,10 @@ packaging_assert_exact_tree() {
      test ! -e "$PACKAGING_ASSERT_ROOT/output" && \
      test ! -e "$PACKAGING_ASSERT_ROOT/tests" && \
      test ! -e "$PACKAGING_ASSERT_ROOT/fixtures" && \
-     test ! -e "$PACKAGING_ASSERT_ROOT/bin" && \
+     test -x "$PACKAGING_ASSERT_ROOT/bin/sensai" && \
      test ! -e "$PACKAGING_ASSERT_ROOT/docs" && \
      test ! -e "$PACKAGING_ASSERT_ROOT/manifest.txt"; then
-    assert_record "$PACKAGING_ASSERT_PREFIX.topology" 0 'output 접두사 없이 runtime AGENTS만 포함한다' || true
+    assert_record "$PACKAGING_ASSERT_PREFIX.topology" 0 'output 접두사 없이 runtime AGENTS와 설치 CLI를 포함한다' || true
   else
     assert_record "$PACKAGING_ASSERT_PREFIX.topology" 1 'stage topology 또는 repository-side 제외 계약 위반' || true
   fi
@@ -86,10 +93,10 @@ case_packaging() {
   else
     assert_record packaging.manifest_oracle 1 'root manifest가 T05 exact oracle과 다르다' || true
   fi
-  assert_eq packaging.manifest_count 36 \
+  assert_eq packaging.manifest_count 37 \
     "$(wc -l <"$SOURCE_ROOT/manifest.txt" | tr -d ' ')" || true
 
-  packaging_tree_hashes "$SOURCE_ROOT/output" "$RUN_TMP/packaging-source.sha256" || return 70
+  packaging_tree_hashes "$SOURCE_ROOT" "$RUN_TMP/packaging-source.sha256" || return 70
   tooling_sha256_file "$SOURCE_ROOT/manifest.txt" || return 70
   PACKAGING_MANIFEST_SHA=$TOOLING_SHA256
   tooling_sha256_file "$RUN_TMP/packaging-source.sha256" || return 70
@@ -108,13 +115,41 @@ case_packaging() {
     packaging_assert_exact_tree packaging.stage "$PACKAGING_STAGE" \
       "$RUN_TMP/packaging-stage.leaves" "$RUN_TMP/packaging-stage.sha256" || return 70
     if rg -q --no-config \
-      '^패키지 mode=stage status=READY files=36 manifest_sha256=[0-9a-f]{64} payload_sha256=[0-9a-f]{64} stage_sha256=[0-9a-f]{64} target=/' \
+      '^패키지 mode=stage status=READY files=37 manifest_sha256=[0-9a-f]{64} payload_sha256=[0-9a-f]{64} stage_sha256=[0-9a-f]{64} target=/' \
       "$RUN_TMP/packaging-stage.out"; then
       assert_record packaging.stage_receipt 0 'stage가 한국어 요약과 hash를 출력한다' || true
     else
       assert_record packaging.stage_receipt 1 'stage 요약 또는 hash가 빠졌다' || true
     fi
   fi
+
+  if test -x "$PACKAGING_STAGE/bin/sensai" && \
+     cmp -s "$SOURCE_ROOT/bin/sensai" "$PACKAGING_STAGE/bin/sensai"; then
+    assert_record packaging.installed_cli_exact 0 '설치 CLI가 source와 byte-identical이며 실행 가능하다' || true
+  else
+    assert_record packaging.installed_cli_exact 1 '설치 CLI byte 또는 실행 mode가 다르다' || true
+  fi
+  PACKAGING_PROJECT=$PACKAGING_ROOT/project
+  mkdir -p "$PACKAGING_PROJECT/input" || return 70
+  git -C "$PACKAGING_PROJECT" init -q || return 70
+  printf '%s\n' '설치 CLI 입력' >"$PACKAGING_PROJECT/input/source.txt" || return 70
+  set +e
+  SENSAI_PROJECT_ROOT="$PACKAGING_PROJECT" \
+    "$PACKAGING_STAGE/bin/sensai" mission init installed-cli input '설치 CLI 검증' \
+    >"$RUN_TMP/packaging-installed-init.out" 2>"$RUN_TMP/packaging-installed-init.err"
+  PACKAGING_INSTALLED_INIT_RC=$?
+  SENSAI_PROJECT_ROOT="$PACKAGING_PROJECT" \
+    "$PACKAGING_STAGE/bin/sensai" mission status installed-cli \
+    >"$RUN_TMP/packaging-installed-status.out" 2>"$RUN_TMP/packaging-installed-status.err"
+  PACKAGING_INSTALLED_STATUS_RC=$?
+  evidence_log_command packaging-installed-mission-init \
+    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission init <isolated-project>' \
+    "$PACKAGING_INSTALLED_INIT_RC"
+  evidence_log_command packaging-installed-mission-status \
+    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission status <isolated-project>' \
+    "$PACKAGING_INSTALLED_STATUS_RC"
+  assert_eq packaging.installed_init_exit 0 "$PACKAGING_INSTALLED_INIT_RC" || true
+  assert_eq packaging.installed_status_exit 0 "$PACKAGING_INSTALLED_STATUS_RC" || true
 
   PACKAGING_INSTALL=$PACKAGING_ROOT/install
   set +e
@@ -150,7 +185,7 @@ case_packaging() {
   fi
   tooling_sha256_file "$SOURCE_ROOT/bin/sensai" || return 70
   assert_eq packaging.source_bin_unchanged "$PACKAGING_BIN_BEFORE" "$TOOLING_SHA256" || true
-  packaging_tree_hashes "$SOURCE_ROOT/output" "$RUN_TMP/packaging-source-after.sha256" || return 70
+  packaging_tree_hashes "$SOURCE_ROOT" "$RUN_TMP/packaging-source-after.sha256" || return 70
   if cmp -s "$RUN_TMP/packaging-source.sha256" "$RUN_TMP/packaging-source-after.sha256"; then
     assert_record packaging.source_payload_unchanged 0 'source output bytes가 바뀌지 않았다' || true
   else
@@ -158,12 +193,12 @@ case_packaging() {
   fi
 
   jq -n --arg manifest_sha256 "$PACKAGING_MANIFEST_SHA" \
-    --arg payload_sha256 "$PACKAGING_SOURCE_SHA" --argjson count 36 \
+    --arg payload_sha256 "$PACKAGING_SOURCE_SHA" --argjson count 37 \
     '{manifest_sha256:$manifest_sha256,payload_sha256:$payload_sha256,leaf_count:$count,oracle:"tests/contracts/manifest.txt"}' \
     >"$EVIDENCE_DIR/manifest-hashes.json" || return 70
   jq -n --arg target "$PACKAGING_STAGE" --arg payload_sha256 "$PACKAGING_SOURCE_SHA" \
-    --argjson exit "$PACKAGING_STAGE_RC" --argjson count 36 \
-    '{target:$target,exit:$exit,leaf_count:$count,payload_sha256:$payload_sha256,output_prefix:false,runtime_agents:true}' \
+    --argjson exit "$PACKAGING_STAGE_RC" --argjson count 37 \
+    '{target:$target,exit:$exit,leaf_count:$count,payload_sha256:$payload_sha256,output_prefix:false,runtime_agents:true,installed_cli:{path:"bin/sensai",executable:true,byte_exact:true}}' \
     >"$EVIDENCE_DIR/stage-tree.json" || return 70
   jq -n --arg target "$PACKAGING_INSTALL" --argjson exit "$PACKAGING_INSTALL_RC" \
     --arg atomicity 'same-parent atomic rename' --arg payload_sha256 "$PACKAGING_SOURCE_SHA" \

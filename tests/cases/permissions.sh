@@ -141,7 +141,11 @@ permissions_run_projection() {
   for PERMISSIONS_ALLOWED_COMMAND in \
     'fd' 'fd --print0 src' 'rg --json --no-config 주문 src' \
     'sg --json -p call src' 'jq -e . trace.json' 'yq -o=json . openapi.yaml' \
-    'mdq #{2} README.md' 'mmdc --input flow.mmd --output docs/analysis/missions/M-001/flow.svg'; do
+    'mdq #{2} README.md' 'mmdc --input flow.mmd --output docs/analysis/missions/M-001/flow.svg' \
+    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission init mission-001 src 목표' \
+    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission checkpoint mission-001 candidate.json 1 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission resume mission-001' \
+    '"$OPENCODE_CONFIG_DIR/bin/sensai" mission status mission-001'; do
     permissions_record_probe projection bash "$PERMISSIONS_CONFIG" '.permission.bash' \
       "$PERMISSIONS_ALLOWED_COMMAND" allow || return 70
   done
@@ -161,7 +165,12 @@ permissions_run_projection() {
     'sg -r 새값 -p 패턴 src' 'sg --update-all -p 패턴 src' \
     'yq -i . openapi.yaml' 'yq --inplace . openapi.yaml' \
     'rg --json 값 .env' 'rg --json 값 keys/id_rsa_prod' \
-    'rg --json 값 home/.config/opencode/opencode.json'; do
+    'rg --json 값 home/.config/opencode/opencode.json' \
+    './bin/sensai mission init mission-001 src 목표' \
+    '"$OPENCODE_CONFIG_DIR/bin/sensai" help' \
+    '"$OPENCODE_CONFIG_DIR/bin/sensai" doctor tools' \
+    '"$OPENCODE_CONFIG_DIR/bin/sensai" stage /tmp/target' \
+    '"$OPENCODE_CONFIG_DIR/bin/other" mission status mission-001'; do
     permissions_record_probe bypass bash "$PERMISSIONS_CONFIG" '.permission.bash' \
       "$PERMISSIONS_BYPASS_COMMAND" deny || return 70
   done
@@ -309,6 +318,7 @@ permissions_clone_source() {
   mkdir -p "$PERMISSIONS_CLONE_ROOT/output/agents" "$PERMISSIONS_CLONE_ROOT/tests/contracts" || return 70
   cp "$SOURCE_ROOT/AGENTS.md" "$PERMISSIONS_CLONE_ROOT/AGENTS.md" || return 70
   cp -R "$SOURCE_ROOT/tests" "$PERMISSIONS_CLONE_ROOT/" || return 70
+  cp -R "$SOURCE_ROOT/output/skills" "$PERMISSIONS_CLONE_ROOT/output/" || return 70
   cp "$SOURCE_ROOT/output/AGENTS.md" "$SOURCE_ROOT/output/opencode.json" \
     "$SOURCE_ROOT/output/toolchain.lock.json" "$PERMISSIONS_CLONE_ROOT/output/" || return 70
   cp "$SOURCE_ROOT/output/agents/sensai-analysis-lead.md" \
@@ -363,6 +373,27 @@ case_permissions() {
   permissions_extract_agents || return 70
   permissions_check_exact_allows "$PERMISSIONS_CONFIG" || return 70
   permissions_run_projection "$PERMISSIONS_CONFIG" || return 70
+  if rg -q --no-config '현재 대상 저장소.*명시적으로 선택.*읽기 전용' \
+       "$SOURCE_ROOT/output/agents/sensai-analysis-lead.md" \
+       "$SOURCE_ROOT/output/agents/sensai-evidence-peer.md" && \
+     rg -q --no-config '쓰기.*docs/analysis/missions/<mission-id>/' \
+       "$SOURCE_ROOT/output/agents/sensai-analysis-lead.md" && \
+     test "$(rg -l --no-config '명시적으로 선택된 원본.*읽기 전용' \
+       "$SOURCE_ROOT"/output/skills/*/SKILL.md | wc -l | tr -d ' ')" -eq 15; then
+    assert_record permissions.target_read_mission_write 0 \
+      'target source는 read-only이고 write는 mission root로 제한된다' || true
+  else
+    assert_record permissions.target_read_mission_write 1 \
+      'target read와 mission write 경계가 불완전하다' || true
+  fi
+  assert_jq permissions.delivery_value_proven_deny '
+    .permission.skill["*"] == "deny" and
+    .permission.skill["sensai-dataflow-chart"] == null and
+    .permission.skill["sensai-user-story"] == null and
+    .permission.skill["sensai-requirement-analyze"] == null and
+    .permission.skill["sensai-change-design"] == null and
+    .permission.skill["sensai-test-scenario"] == null
+  ' "$PERMISSIONS_CONFIG" || true
 
   assert_jq permissions.external_directory '.permission.external_directory == "deny"' \
     "$PERMISSIONS_CONFIG" || true

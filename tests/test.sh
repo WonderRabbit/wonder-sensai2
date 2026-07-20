@@ -17,6 +17,7 @@ usage: ./tests/test.sh <selector> [--evidence <dir>]
        ./tests/test.sh expect-fail <case> [--evidence <dir>]
 
 selectors:
+  all
   self
   docs
   fixtures
@@ -41,6 +42,8 @@ selectors:
   packaging-adversarial
   e2e-asis
   e2e-tobe
+  continuity
+  opencode-load
   core-readiness
   expect-fail fixture-without-golden
   expect-fail stale-catalog-doc
@@ -66,6 +69,9 @@ selectors:
   expect-fail staged-byte-drift
   expect-fail asis-golden-drift
   expect-fail conflict-hidden-by-deliverable
+  expect-fail concurrent-mission-writer
+  expect-fail inherited-config-sentinel
+  expect-fail misleading-success-output
   expect-fail core-not-ready
 EOF
 }
@@ -83,7 +89,7 @@ for TEST_LIB in assert evidence tooling receipt; do
   . "$TEST_LIB_PATH"
 done
 
-for TEST_CASE_FILE in self docs fixtures catalog-oracle schema-trace schema-progress recipe-trace provenance validators config agents permissions skills-core skills-analysis skills-delivery commands-asis commands-delivery commands-orchestration doctor packaging packaging-adversarial e2e-asis e2e-tobe core-readiness; do
+for TEST_CASE_FILE in self docs fixtures catalog-oracle schema-trace schema-progress recipe-trace provenance validators config agents permissions skills-core skills-analysis skills-delivery commands-asis commands-delivery commands-orchestration doctor packaging packaging-adversarial e2e-asis e2e-tobe continuity opencode-load release-preflight core-readiness; do
   TEST_CASE_PATH="$SCRIPT_DIR/cases/$TEST_CASE_FILE.sh"
   if ! test -f "$TEST_CASE_PATH"; then
     printf 'INFRA_ERROR missing_test_case path=%s\n' "$TEST_CASE_PATH" >&2
@@ -126,7 +132,7 @@ while test "$#" -gt 0; do
 done
 
 case "$SELECTOR" in
-  self|docs|fixtures|catalog-oracle|schema-trace|schema-progress|recipe-trace|provenance|validators|config|agents|permissions|skills-core|skills-analysis|skills-delivery|commands-asis|commands-analysis|commands-delivery|commands-orchestration|doctor|packaging|packaging-adversarial|e2e-asis|e2e-tobe|core-readiness|expect-fail) ;;
+  all|self|docs|fixtures|catalog-oracle|schema-trace|schema-progress|recipe-trace|provenance|validators|config|agents|permissions|skills-core|skills-analysis|skills-delivery|commands-asis|commands-analysis|commands-delivery|commands-orchestration|doctor|packaging|packaging-adversarial|e2e-asis|e2e-tobe|continuity|opencode-load|core-readiness|expect-fail) ;;
   __assertion-probe|__pass-probe|__misleading-probe|__fingerprint-probe|__empty-probe)
     test "${SENSAI_TEST_INTERNAL:-0}" = 1 || { usage >&2; exit "$EX_USAGE"; }
     ;;
@@ -1075,7 +1081,89 @@ run_expected_staged_byte_drift() {
   assert_eq expect.staged_byte_drift_source_unchanged "$EXPECT_DRIFT_BEFORE" "$EXPECT_DRIFT_AFTER" || true
 }
 
+run_expected_inherited_config_sentinel() {
+  CASE_TOTAL=$((CASE_TOTAL + 1))
+  EXPECT_OPENCODE_LOAD_EVIDENCE=$EVIDENCE_DIR/inner-inherited-config-sentinel
+  set +e
+  env SENSAI_TEST_OPENCODE_INHERITED_SENTINEL=1 \
+    SENSAI_TEST_SOURCE_ROOT="$SOURCE_ROOT" \
+    "$TEST_RUNNER" opencode-load --evidence "$EXPECT_OPENCODE_LOAD_EVIDENCE" \
+    >"$RUN_TMP/expect-inherited-config-sentinel.out" \
+    2>"$RUN_TMP/expect-inherited-config-sentinel.err"
+  EXPECT_OPENCODE_LOAD_RC=$?
+  evidence_log_command expected-inherited-config-sentinel \
+    "$TEST_RUNNER opencode-load <disposable-inherited-sentinel>" \
+    "$EXPECT_OPENCODE_LOAD_RC"
+  case "$EXPECT_OPENCODE_LOAD_RC" in
+    64|70|127)
+      RUNNER_INFRA_REASON="EXPECTED_FAILURE_INNER_EXIT_$EXPECT_OPENCODE_LOAD_RC"
+      evidence_add_reason "$RUNNER_INFRA_REASON"
+      return 70
+      ;;
+  esac
+  assert_eq expect.inherited_config_sentinel_exit 1 "$EXPECT_OPENCODE_LOAD_RC" || true
+  if test -f "$EXPECT_OPENCODE_LOAD_EVIDENCE/receipt.json"; then
+    assert_jq expect.inherited_config_sentinel_result \
+      '.result == "ASSERTION_FAILURE" and .exit == 1' \
+      "$EXPECT_OPENCODE_LOAD_EVIDENCE/receipt.json" || true
+    assert_jq expect.inherited_config_sentinel_named_failure \
+      '(.failed_assertion_ids | index("opencode-load.inherited_sentinel")) != null' \
+      "$EXPECT_OPENCODE_LOAD_EVIDENCE/receipt.json" || true
+    assert_jq expect.inherited_config_sentinel_projection \
+      '.isolation.inherited_sentinel == true' \
+      "$EXPECT_OPENCODE_LOAD_EVIDENCE/safe-projection-pass1.json" || true
+  else
+    assert_record expect.inherited_config_sentinel_receipt 1 \
+      '상속 sentinel expected-failure 영수증이 없다' || true
+  fi
+}
+
+run_expected_misleading_success_output() {
+  CASE_TOTAL=$((CASE_TOTAL + 1))
+  EXPECT_RELEASE_EVIDENCE=$EVIDENCE_DIR/inner-misleading-success-output
+  set +e
+  env SENSAI_TEST_PREFLIGHT_FAULT=misleading-success \
+    SENSAI_TEST_SOURCE_ROOT="$SOURCE_ROOT" \
+    "$TEST_RUNNER" all --evidence "$EXPECT_RELEASE_EVIDENCE" \
+    >"$RUN_TMP/expect-misleading-success.out" \
+    2>"$RUN_TMP/expect-misleading-success.err"
+  EXPECT_RELEASE_RC=$?
+  evidence_log_command expected-misleading-success-output \
+    "$TEST_RUNNER all <misleading-PASS-output>" "$EXPECT_RELEASE_RC"
+  case "$EXPECT_RELEASE_RC" in
+    64|70|127)
+      RUNNER_INFRA_REASON="EXPECTED_FAILURE_INNER_EXIT_$EXPECT_RELEASE_RC"
+      evidence_add_reason "$RUNNER_INFRA_REASON"
+      return 70
+      ;;
+  esac
+  assert_eq expect.misleading_success_exit 1 "$EXPECT_RELEASE_RC" || true
+  if test -f "$EXPECT_RELEASE_EVIDENCE/receipt.json"; then
+    assert_jq expect.misleading_success_result \
+      '.result == "ASSERTION_FAILURE" and .exit == 1' \
+      "$EXPECT_RELEASE_EVIDENCE/receipt.json" || true
+    assert_jq expect.misleading_success_named_failure \
+      '.failed_assertion_ids == ["release-preflight.child_exit"]' \
+      "$EXPECT_RELEASE_EVIDENCE/receipt.json" || true
+    if jq -e '
+         .child_exit == 1 and .misleading_text_observed == true
+         and .result == "EXPECTED_ASSERTION_FAILURE"
+       ' \
+         "$EXPECT_RELEASE_EVIDENCE/summary.json" >/dev/null 2>&1; then
+      assert_record expect.misleading_success_text_ignored 0 \
+        'PASS 문자열보다 exit와 assertion receipt를 우선했다' || true
+    else
+      assert_record expect.misleading_success_text_ignored 1 \
+        'misleading PASS 대립 입력 증거가 불완전하다' || true
+    fi
+  else
+    assert_record expect.misleading_success_receipt 1 \
+      'misleading-success expected-failure 영수증이 없다' || true
+  fi
+}
+
 case "$SELECTOR" in
+  all) case_release_preflight || RUNNER_INFRA_REASON=RELEASE_PREFLIGHT_CASE_INFRA ;;
   self) case_self || RUNNER_INFRA_REASON=SELF_CASE_INFRA ;;
   docs) case_docs || RUNNER_INFRA_REASON=DOCS_CASE_INFRA ;;
   fixtures) case_fixtures || RUNNER_INFRA_REASON=FIXTURES_CASE_INFRA ;;
@@ -1099,6 +1187,8 @@ case "$SELECTOR" in
   packaging-adversarial) case_packaging_adversarial || RUNNER_INFRA_REASON=PACKAGING_ADVERSARIAL_CASE_INFRA ;;
   e2e-asis) case_e2e_asis || RUNNER_INFRA_REASON=E2E_ASIS_CASE_INFRA ;;
   e2e-tobe) case_e2e_tobe || RUNNER_INFRA_REASON=E2E_TOBE_CASE_INFRA ;;
+  continuity) case_continuity || RUNNER_INFRA_REASON=CONTINUITY_CASE_INFRA ;;
+  opencode-load) case_opencode_load || RUNNER_INFRA_REASON=OPENCODE_LOAD_CASE_INFRA ;;
   core-readiness) case_core_readiness ;;
   expect-fail)
     case "$EXPECTED_CASE" in
@@ -1126,6 +1216,9 @@ case "$SELECTOR" in
       staged-byte-drift) run_expected_staged_byte_drift; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
       asis-golden-drift) run_expected_asis_golden_drift; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
       conflict-hidden-by-deliverable) run_expected_conflict_hidden_by_deliverable; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
+      concurrent-mission-writer) run_expected_concurrent_mission_writer; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
+      inherited-config-sentinel) run_expected_inherited_config_sentinel; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
+      misleading-success-output) run_expected_misleading_success_output; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
       stale-catalog-doc) run_expected_stale_catalog_doc; EXPECT_DISPATCH_RC=$?; test "$EXPECT_DISPATCH_RC" -eq 70 && RUNNER_INFRA_REASON=EXPECTED_FAILURE_INFRA ;;
       *) usage >&2; exit "$EX_USAGE" ;;
     esac

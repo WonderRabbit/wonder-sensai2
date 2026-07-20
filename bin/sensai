@@ -10,6 +10,11 @@ EX_TEMPFAIL=75
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) || exit "$EX_UNAVAILABLE"
 SOURCE_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P) || exit "$EX_UNAVAILABLE"
+if test -d "$SOURCE_ROOT/output" && ! test -L "$SOURCE_ROOT/output"; then
+  RUNTIME_ROOT=$SOURCE_ROOT/output
+else
+  RUNTIME_ROOT=$SOURCE_ROOT
+fi
 PROJECT_REQUEST=${SENSAI_PROJECT_ROOT:-$(pwd -P)}
 
 usage() {
@@ -142,7 +147,10 @@ package_test_pause() {
 
 package_source_leaf_regular() {
   PACKAGE_ENTRY=$1
-  PACKAGE_CURRENT=$SOURCE_ROOT/output
+  case "$PACKAGE_ENTRY" in
+    bin/sensai) PACKAGE_CURRENT=$SOURCE_ROOT ;;
+    *) PACKAGE_CURRENT=$SOURCE_ROOT/output ;;
+  esac
   test -d "$PACKAGE_CURRENT" && ! test -L "$PACKAGE_CURRENT" || return 1
   PACKAGE_OLD_IFS=$IFS
   IFS=/
@@ -165,6 +173,13 @@ package_source_leaf_regular() {
       test -f "$PACKAGE_CURRENT" || return 1
     fi
   done
+}
+
+package_source_path() {
+  case "$1" in
+    bin/sensai) PACKAGE_SOURCE_PATH=$SOURCE_ROOT/bin/sensai ;;
+    *) PACKAGE_SOURCE_PATH=$SOURCE_ROOT/output/$1 ;;
+  esac
 }
 
 package_prepare_target() {
@@ -222,11 +237,12 @@ package_validate_source() {
   ' "$PACKAGE_MANIFEST" || fail "$EX_DATAERR" package.manifest_invalid unsafe_or_duplicate
   PACKAGE_COUNT=$(awk 'END {print NR+0}' "$PACKAGE_MANIFEST") || \
     fail "$EX_UNAVAILABLE" package.manifest_unreadable count
-  test "$PACKAGE_COUNT" -eq 36 || \
+  test "$PACKAGE_COUNT" -eq 37 || \
     fail "$EX_DATAERR" package.manifest_invalid "count=$PACKAGE_COUNT"
 
-  find "$SOURCE_ROOT/output" -mindepth 1 ! -type d -print | \
-    sed "s#^$SOURCE_ROOT/output/##" | LC_ALL=C sort >"$PACKAGE_WORK/output.leaves" || \
+  { find "$SOURCE_ROOT/output" -mindepth 1 ! -type d -print | \
+      sed "s#^$SOURCE_ROOT/output/##"; printf '%s\n' bin/sensai; } | \
+    LC_ALL=C sort >"$PACKAGE_WORK/output.leaves" || \
     fail "$EX_UNAVAILABLE" package.source_scan_failed output
   cmp -s "$PACKAGE_MANIFEST" "$PACKAGE_WORK/output.leaves" || \
     fail "$EX_DATAERR" package.source_exact_set_mismatch output
@@ -236,7 +252,8 @@ package_validate_source() {
   while IFS= read -r PACKAGE_ENTRY; do
     package_source_leaf_regular "$PACKAGE_ENTRY" || \
       fail "$EX_DATAERR" package.source_leaf_invalid "$PACKAGE_ENTRY"
-    sha256_file "$SOURCE_ROOT/output/$PACKAGE_ENTRY" || \
+    package_source_path "$PACKAGE_ENTRY"
+    sha256_file "$PACKAGE_SOURCE_PATH" || \
       fail "$EX_UNAVAILABLE" package.hash_failed "$PACKAGE_ENTRY"
     printf '%s  %s\n' "$SHA_VALUE" "$PACKAGE_ENTRY" >>"$PACKAGE_WORK/source.sha256" || \
       fail "$EX_UNAVAILABLE" package.hash_write_failed source
@@ -254,7 +271,8 @@ package_verify_source_unchanged() {
   while IFS= read -r PACKAGE_ENTRY; do
     package_source_leaf_regular "$PACKAGE_ENTRY" || \
       fail "$EX_DATAERR" package.source_leaf_invalid "$PACKAGE_ENTRY"
-    sha256_file "$SOURCE_ROOT/output/$PACKAGE_ENTRY" || \
+    package_source_path "$PACKAGE_ENTRY"
+    sha256_file "$PACKAGE_SOURCE_PATH" || \
       fail "$EX_UNAVAILABLE" package.hash_failed "$PACKAGE_ENTRY"
     printf '%s  %s\n' "$SHA_VALUE" "$PACKAGE_ENTRY" >>"$PACKAGE_WORK/source.current.sha256" || \
       fail "$EX_UNAVAILABLE" package.hash_write_failed source_current
@@ -272,8 +290,13 @@ package_copy_tree() {
       fail "$EX_UNAVAILABLE" package.stage_path_failed "$PACKAGE_ENTRY"
     mkdir -p "$PACKAGE_DEST_PARENT" || \
       fail "$EX_CANTCREAT" package.stage_create_failed "$PACKAGE_ENTRY"
-    cp "$SOURCE_ROOT/output/$PACKAGE_ENTRY" "$PACKAGE_DEST" || \
+    package_source_path "$PACKAGE_ENTRY"
+    cp "$PACKAGE_SOURCE_PATH" "$PACKAGE_DEST" || \
       fail "$EX_CANTCREAT" package.copy_failed "$PACKAGE_ENTRY"
+    if test "$PACKAGE_ENTRY" = bin/sensai; then
+      chmod 755 "$PACKAGE_DEST" || \
+        fail "$EX_CANTCREAT" package.mode_failed "$PACKAGE_ENTRY"
+    fi
     test -f "$PACKAGE_DEST" && ! test -L "$PACKAGE_DEST" || \
       fail "$EX_DATAERR" package.stage_leaf_invalid "$PACKAGE_ENTRY"
   done <"$PACKAGE_MANIFEST"
@@ -464,7 +487,7 @@ utc_now_after() {
 validate_trace() {
   TRACE_FILE=$1
   test -f "$TRACE_FILE" && ! test -L "$TRACE_FILE" || return 1
-  jq empty "$SOURCE_ROOT/output/schemas/trace.schema.json" >/dev/null 2>&1 || return 1
+  jq empty "$RUNTIME_ROOT/schemas/trace.schema.json" >/dev/null 2>&1 || return 1
   jq -e '
     type == "object"
     and .schema_version == "2.0"
@@ -481,16 +504,16 @@ validate_trace() {
       .extension_requirements,.designs,.bindings,.unknowns,.unsupported,.provenance
     ][]; type == "array")
   ' "$TRACE_FILE" >/dev/null 2>&1 || return 1
-  jq -e -f "$SOURCE_ROOT/output/recipes/trace.jq" "$TRACE_FILE" >/dev/null 2>&1
+  jq -e -f "$RUNTIME_ROOT/recipes/trace.jq" "$TRACE_FILE" >/dev/null 2>&1
 }
 
 validate_progress() {
   PROGRESS_FILE=$1
   test -f "$PROGRESS_FILE" && ! test -L "$PROGRESS_FILE" || return 1
-  jq empty "$SOURCE_ROOT/output/schemas/progress.schema.json" >/dev/null 2>&1 || return 1
+  jq empty "$RUNTIME_ROOT/schemas/progress.schema.json" >/dev/null 2>&1 || return 1
   jq -n --slurpfile progress "$PROGRESS_FILE" \
     '{mode:"validate",progress:$progress[0]}' >"$MISSION_WORK/progress-validate.json" || return 1
-  jq -e -f "$SOURCE_ROOT/output/recipes/progress.jq" \
+  jq -e -f "$RUNTIME_ROOT/recipes/progress.jq" \
     "$MISSION_WORK/progress-validate.json" >/dev/null 2>&1
 }
 
@@ -520,6 +543,7 @@ mission_work_prepare() {
   require_command rm
   require_command cp
   require_command cat
+  require_command cmp
   require_command sleep
   resolve_project_root
   MISSION_WORK=$(mktemp -d "${TMPDIR:-/tmp}/sensai-cli.XXXXXX") || \
@@ -534,8 +558,12 @@ mission_work_prepare() {
 
 mission_cleanup() {
   if test "${LOCK_OWNED:-0}" -eq 1; then
-    rm -f "$MISSION_LOCK/owner" 2>/dev/null || true
-    rmdir "$MISSION_LOCK" 2>/dev/null || true
+    if test "${LOCK_RECORDED:-0}" -eq 0; then
+      rmdir "$MISSION_LOCK" 2>/dev/null || true
+    elif mission_lock_owner_matches; then
+      rm -f "$MISSION_LOCK/owner" 2>/dev/null || true
+      rmdir "$MISSION_LOCK" 2>/dev/null || true
+    fi
     LOCK_OWNED=0
   fi
   for CLEAN_FILE in "${CHECKPOINT_TMP:-}" "${RESUME_TMP:-}"; do
@@ -572,17 +600,79 @@ mission_lock_acquire() {
     fail "$EX_TEMPFAIL" progress.resume.concurrent lock_exists
   fi
   LOCK_OWNED=1
-  printf 'pid=%s\n' "$$" >"$MISSION_LOCK/owner" || {
-    rmdir "$MISSION_LOCK" 2>/dev/null || true
+  LOCK_RECORDED=0
+  LOCK_OWNER_TOKEN="pid-$$"
+}
+
+mission_lock_record() {
+  LOCK_BASE_REVISION=$1
+  LOCK_BASE_HASH=$2
+  test "${LOCK_OWNED:-0}" -eq 1 || fail "$EX_UNAVAILABLE" mission.lock_write_failed not_owned
+  jq -n --arg mission "$MISSION_ID" --arg owner "$LOCK_OWNER_TOKEN" \
+    --argjson revision "$LOCK_BASE_REVISION" --arg hash "$LOCK_BASE_HASH" \
+    '{mission_id:$mission,owner:$owner,base_revision:$revision,base_progress_sha256:$hash,exclusive:true}' \
+    >"$MISSION_WORK/lock-owner.json" || fail "$EX_UNAVAILABLE" mission.lock_write_failed candidate
+  mv "$MISSION_WORK/lock-owner.json" "$MISSION_LOCK/owner" || \
     fail "$EX_UNAVAILABLE" mission.lock_write_failed owner
-  }
+  LOCK_RECORDED=1
+}
+
+mission_lock_owner_matches() {
+  test -f "$MISSION_LOCK/owner" && ! test -L "$MISSION_LOCK/owner" || return 1
+  jq -e --arg mission "$MISSION_ID" --arg owner "$LOCK_OWNER_TOKEN" \
+    '.mission_id == $mission and .owner == $owner and .exclusive == true' \
+    "$MISSION_LOCK/owner" >/dev/null 2>&1
+}
+
+mission_lock_verify() {
+  LOCK_BASE_REVISION=$1
+  LOCK_BASE_HASH=$2
+  test -f "$MISSION_LOCK/owner" && ! test -L "$MISSION_LOCK/owner" || return 1
+  jq -e --arg mission "$MISSION_ID" --arg owner "$LOCK_OWNER_TOKEN" \
+    --argjson revision "$LOCK_BASE_REVISION" --arg hash "$LOCK_BASE_HASH" '
+      keys == ["base_progress_sha256","base_revision","exclusive","mission_id","owner"]
+      and .mission_id == $mission and .owner == $owner
+      and .base_revision == $revision and .base_progress_sha256 == $hash
+      and .exclusive == true
+    ' "$MISSION_LOCK/owner" >/dev/null 2>&1
+}
+
+mission_test_pause() {
+  MISSION_PAUSE_POINT=$1
+  test "${SENSAI_TEST_INTERNAL:-0}" = 1 || return 0
+  if test "${SENSAI_TEST_MISSION_INTERRUPT:-}" = "$MISSION_PAUSE_POINT"; then
+    MISSION_CAPTURE=${SENSAI_TEST_MISSION_CAPTURE:-}
+    case "$MISSION_CAPTURE" in
+      "$PROJECT_ROOT"/.sensai-test-capture.*) ;;
+      *) fail "$EX_DATAERR" mission.test_hook_invalid capture_path ;;
+    esac
+    cp "$MISSION_LOCK/owner" "$MISSION_CAPTURE" || \
+      fail "$EX_UNAVAILABLE" mission.test_hook_failed capture
+    exit 130
+  fi
+  test "${SENSAI_TEST_MISSION_PAUSE:-}" = "$MISSION_PAUSE_POINT" || return 0
+  MISSION_READY=${SENSAI_TEST_MISSION_READY:-}
+  case "$MISSION_READY" in
+    "$PROJECT_ROOT"/.sensai-test-ready.*) ;;
+    *) fail "$EX_DATAERR" mission.test_hook_invalid ready_path ;;
+  esac
+  : >"$MISSION_READY" || fail "$EX_UNAVAILABLE" mission.test_hook_failed ready
+  MISSION_PAUSE_ATTEMPT=0
+  while ! test -e "$MISSION_READY.release"; do
+    sleep 1
+    MISSION_PAUSE_ATTEMPT=$((MISSION_PAUSE_ATTEMPT + 1))
+    test "$MISSION_PAUSE_ATTEMPT" -lt 30 || \
+      fail "$EX_TEMPFAIL" mission.test_hook_timeout "$MISSION_PAUSE_POINT"
+  done
 }
 
 mission_lock_release() {
   test "${LOCK_OWNED:-0}" -eq 1 || return 0
+  test "${LOCK_RECORDED:-0}" -eq 1 && mission_lock_owner_matches || return 1
   rm -f "$MISSION_LOCK/owner" 2>/dev/null || return 1
   rmdir "$MISSION_LOCK" 2>/dev/null || return 1
   LOCK_OWNED=0
+  LOCK_RECORDED=0
 }
 
 mission_observed() {
@@ -593,9 +683,60 @@ mission_observed() {
   OBSERVED_INPUTS=$TARGET_HASH
   sha256_file "$MISSION_TRACE" || return 1
   OBSERVED_TRACE=$SHA_VALUE
-  sha256_file "$SOURCE_ROOT/output/toolchain.lock.json" || return 1
+  sha256_file "$RUNTIME_ROOT/toolchain.lock.json" || return 1
   OBSERVED_TOOLCHAIN=$SHA_VALUE
   git_head || return 1
+}
+
+mission_require_preconditions() {
+  PRECONDITION_PROGRESS=$1
+  PRECONDITION_EXPECT_TRACE=$(jq -r '.precondition_fingerprints.trace' "$PRECONDITION_PROGRESS") || \
+    fail "$EX_DATAERR" progress.resume.corrupt trace_hash
+  PRECONDITION_EXPECT_INPUTS=$(jq -r '.precondition_fingerprints.inputs' "$PRECONDITION_PROGRESS") || \
+    fail "$EX_DATAERR" progress.resume.corrupt inputs_hash
+  PRECONDITION_EXPECT_GIT=$(jq -r '.precondition_fingerprints.git_head // empty' "$PRECONDITION_PROGRESS") || \
+    fail "$EX_DATAERR" progress.resume.corrupt git_head
+  PRECONDITION_EXPECT_TOOLCHAIN=$(jq -r '.precondition_fingerprints.toolchain // empty' "$PRECONDITION_PROGRESS") || \
+    fail "$EX_DATAERR" progress.resume.corrupt toolchain
+  test "$PRECONDITION_EXPECT_TRACE" = "$OBSERVED_TRACE" || \
+    fail "$EX_TEMPFAIL" progress.resume.precondition_trace mismatch
+  test "$PRECONDITION_EXPECT_INPUTS" = "$OBSERVED_INPUTS" || \
+    fail "$EX_TEMPFAIL" progress.resume.precondition_inputs mismatch
+  test -z "$PRECONDITION_EXPECT_GIT" || test "$PRECONDITION_EXPECT_GIT" = "$GIT_HEAD" || \
+    fail "$EX_TEMPFAIL" progress.resume.precondition_git_head mismatch
+  test -z "$PRECONDITION_EXPECT_TOOLCHAIN" || test "$PRECONDITION_EXPECT_TOOLCHAIN" = "$OBSERVED_TOOLCHAIN" || \
+    fail "$EX_TEMPFAIL" progress.resume.precondition_toolchain mismatch
+}
+
+mission_validate_approval_receipts() {
+  APPROVAL_PROGRESS=$1
+  while IFS="$(printf '\t')" read -r APPROVAL_GATE APPROVAL_VERDICT APPROVAL_REASON \
+      APPROVAL_ACTOR APPROVAL_SOURCE APPROVAL_PATH APPROVAL_HASH APPROVAL_RECORDED; do
+    test -n "$APPROVAL_GATE" || continue
+    resolve_project_path "$APPROVAL_PATH" || \
+      fail "$EX_DATAERR" progress.approval_receipt unsafe_or_missing
+    APPROVAL_FILE=$RESOLVED_PATH
+    test -f "$APPROVAL_FILE" && ! test -L "$APPROVAL_FILE" || \
+      fail "$EX_DATAERR" progress.approval_receipt not_regular
+    sha256_file "$APPROVAL_FILE" || fail "$EX_UNAVAILABLE" mission.hash_unavailable approval
+    test "$SHA_VALUE" = "$APPROVAL_HASH" || \
+      fail "$EX_DATAERR" progress.approval_receipt hash_mismatch
+    jq -e \
+      --arg mission "$MISSION_ID" --arg gate "$APPROVAL_GATE" \
+      --arg verdict "$APPROVAL_VERDICT" --arg reason "$APPROVAL_REASON" \
+      --arg actor "$APPROVAL_ACTOR" --arg source "$APPROVAL_SOURCE" \
+      --arg recorded "$APPROVAL_RECORDED" --arg trace "$OBSERVED_TRACE" \
+      --arg inputs "$OBSERVED_INPUTS" '
+        keys == ["actor_role","gate","inputs_sha256","mission_id","reason","recorded_at","source","trace_sha256","verdict"]
+        and .mission_id == $mission and .gate == $gate and .verdict == $verdict
+        and .reason == $reason and .actor_role == $actor and .source == $source
+        and .recorded_at == $recorded and .trace_sha256 == $trace
+        and .inputs_sha256 == $inputs
+      ' "$APPROVAL_FILE" >/dev/null 2>&1 || \
+      fail "$EX_DATAERR" progress.approval_receipt content_mismatch
+  done <<EOF
+$(jq -r '.approvals[]? | [.gate,.verdict,.reason,.actor_role,.source,.receipt_path,.receipt_sha256,.recorded_at] | @tsv' "$APPROVAL_PROGRESS")
+EOF
 }
 
 write_status_candidate() {
@@ -603,7 +744,7 @@ write_status_candidate() {
   STATUS_DEST=$2
   jq -n --slurpfile progress "$STATUS_PROGRESS" \
     '{mode:"status",progress:$progress[0]}' >"$MISSION_WORK/status-envelope.json" || return 1
-  jq -r -e -f "$SOURCE_ROOT/output/recipes/progress.jq" \
+  jq -r -e -f "$RUNTIME_ROOT/recipes/progress.jq" \
     "$MISSION_WORK/status-envelope.json" >"$STATUS_DEST" 2>/dev/null
 }
 
@@ -641,8 +782,8 @@ doctor_tools() {
 doctor_models() {
   test "$#" -eq 0 || { usage >&2; exit "$EX_USAGE"; }
   require_command jq
-  LOCK=$SOURCE_ROOT/output/toolchain.lock.json
-  CONFIG=$SOURCE_ROOT/output/opencode.json
+  LOCK=$RUNTIME_ROOT/toolchain.lock.json
+  CONFIG=$RUNTIME_ROOT/opencode.json
   test -f "$LOCK" && test -f "$CONFIG" && ! test -L "$LOCK" && ! test -L "$CONFIG" || \
     fail "$EX_UNAVAILABLE" model.config_unavailable missing_regular_file
   jq empty "$LOCK" "$CONFIG" >/dev/null 2>&1 || \
@@ -684,7 +825,7 @@ mission_init() {
   test -n "$INIT_GOAL" || fail "$EX_DATAERR" mission.goal_invalid empty
   hash_target "$INIT_TARGET" || fail "$EX_DATAERR" mission.target_invalid unresolved_or_symlink
   INIT_INPUTS_HASH=$TARGET_HASH
-  sha256_file "$SOURCE_ROOT/output/toolchain.lock.json" || \
+  sha256_file "$RUNTIME_ROOT/toolchain.lock.json" || \
     fail "$EX_UNAVAILABLE" mission.toolchain_unavailable hash_failed
   INIT_TOOLCHAIN_HASH=$SHA_VALUE
   git_head || fail "$EX_UNAVAILABLE" mission.git_state_unavailable read_failed
@@ -777,11 +918,17 @@ mission_checkpoint() {
     fail "$EX_TEMPFAIL" progress.resume.stale_hash active_progress
   test "$ACTIVE_REVISION" = "$CHECKPOINT_EXPECTED_REVISION" || \
     fail "$EX_TEMPFAIL" progress.resume.stale_revision active_progress
+  mission_lock_record "$ACTIVE_REVISION" "$ACTIVE_HASH"
+  mission_lock_verify "$ACTIVE_REVISION" "$ACTIVE_HASH" || \
+    fail "$EX_TEMPFAIL" progress.resume.double_resume lock_mismatch
+  mission_test_pause after-lock
   cp "$CHECKPOINT_SOURCE" "$MISSION_DIR/.sensai-progress.$$.json" || \
     fail "$EX_UNAVAILABLE" mission.write_failed checkpoint_copy
   CHECKPOINT_TMP=$MISSION_DIR/.sensai-progress.$$.json
   validate_progress "$CHECKPOINT_TMP" || fail "$EX_DATAERR" progress.resume.corrupt candidate
-  mission_observed "$CHECKPOINT_TMP" || fail "$EX_DATAERR" progress.resume.precondition_inputs target
+  mission_observed "$MISSION_PROGRESS" || fail "$EX_DATAERR" progress.resume.precondition_inputs target
+  mission_require_preconditions "$MISSION_PROGRESS"
+  mission_validate_approval_receipts "$CHECKPOINT_TMP"
   jq -n --slurpfile previous "$MISSION_PROGRESS" --slurpfile current "$CHECKPOINT_TMP" \
     --arg previous_hash "$ACTIVE_HASH" --arg trace "$OBSERVED_TRACE" --arg inputs "$OBSERVED_INPUTS" \
     --arg git "$GIT_HEAD" --arg toolchain "$OBSERVED_TOOLCHAIN" '
@@ -791,12 +938,14 @@ mission_checkpoint() {
       observed_fingerprints:{trace:$trace,inputs:$inputs,git_head:$git,toolchain:$toolchain}
     }
   ' >"$MISSION_WORK/transition.json" || fail "$EX_UNAVAILABLE" mission.write_failed transition_envelope
-  jq -e -f "$SOURCE_ROOT/output/recipes/progress.jq" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
+  jq -e -f "$RUNTIME_ROOT/recipes/progress.jq" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
     fail "$EX_DATAERR" progress.transition.invalid candidate
   write_status_candidate "$CHECKPOINT_TMP" "$MISSION_DIR/.sensai-status.$$.md" || \
     fail "$EX_DATAERR" progress.status_invalid candidate
   sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.hash_unavailable pre_rename
   test "$SHA_VALUE" = "$ACTIVE_HASH" || fail "$EX_TEMPFAIL" progress.resume.stale_hash pre_rename
+  mission_lock_verify "$ACTIVE_REVISION" "$ACTIVE_HASH" || \
+    fail "$EX_TEMPFAIL" progress.resume.double_resume lock_mismatch
   mv "$CHECKPOINT_TMP" "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.atomic_rename_failed progress
   mv "$MISSION_DIR/.sensai-status.$$.md" "$MISSION_STATUS" || \
     fail "$EX_UNAVAILABLE" mission.atomic_rename_failed status
@@ -816,15 +965,17 @@ mission_status() {
   validate_trace "$MISSION_TRACE" || fail "$EX_DATAERR" progress.resume.corrupt trace
   validate_progress "$MISSION_PROGRESS" || fail "$EX_DATAERR" progress.resume.corrupt progress
   mission_observed "$MISSION_PROGRESS" || fail "$EX_DATAERR" progress.resume.precondition_inputs target
-  EXPECT_TRACE=$(jq -r '.precondition_fingerprints.trace' "$MISSION_PROGRESS") || \
-    fail "$EX_DATAERR" progress.resume.corrupt trace_hash
-  EXPECT_INPUTS=$(jq -r '.precondition_fingerprints.inputs' "$MISSION_PROGRESS") || \
-    fail "$EX_DATAERR" progress.resume.corrupt inputs_hash
-  test "$EXPECT_TRACE" = "$OBSERVED_TRACE" || fail "$EX_TEMPFAIL" progress.resume.precondition_trace mismatch
-  test "$EXPECT_INPUTS" = "$OBSERVED_INPUTS" || fail "$EX_TEMPFAIL" progress.resume.precondition_inputs mismatch
+  mission_require_preconditions "$MISSION_PROGRESS"
+  mission_validate_approval_receipts "$MISSION_PROGRESS"
   write_status_candidate "$MISSION_PROGRESS" "$MISSION_WORK/status.md" || \
     fail "$EX_DATAERR" progress.status_invalid current
   cat "$MISSION_WORK/status.md"
+  if test -f "$MISSION_STATUS" && ! test -L "$MISSION_STATUS" && \
+     cmp -s "$MISSION_STATUS" "$MISSION_WORK/status.md"; then
+    printf '%s\n' '- status_view: `current`'
+  else
+    printf '%s\n' '- status_view: `stale`'
+  fi
 }
 
 mission_resume() {
@@ -851,15 +1002,29 @@ mission_resume() {
     fail "$EX_TEMPFAIL" progress.resume.stale_hash active_progress
   test -z "$RESUME_EXPECTED_REVISION" || test "$RESUME_EXPECTED_REVISION" = "$ACTIVE_REVISION" || \
     fail "$EX_TEMPFAIL" progress.resume.stale_revision active_progress
+  mission_lock_record "$ACTIVE_REVISION" "$ACTIVE_HASH"
+  mission_lock_verify "$ACTIVE_REVISION" "$ACTIVE_HASH" || \
+    fail "$EX_TEMPFAIL" progress.resume.double_resume lock_mismatch
+  mission_test_pause after-lock
   ACTIVE_STATUS=$(jq -r '.status' "$MISSION_PROGRESS") || fail "$EX_DATAERR" progress.resume.corrupt status
   test "$ACTIVE_STATUS" != completed || fail "$EX_DATAERR" progress.resume.terminal completed
   mission_observed "$MISSION_PROGRESS" || fail "$EX_DATAERR" progress.resume.precondition_inputs target
-  EXPECT_TRACE=$(jq -r '.precondition_fingerprints.trace' "$MISSION_PROGRESS") || \
-    fail "$EX_DATAERR" progress.resume.corrupt trace_hash
-  EXPECT_INPUTS=$(jq -r '.precondition_fingerprints.inputs' "$MISSION_PROGRESS") || \
-    fail "$EX_DATAERR" progress.resume.corrupt inputs_hash
-  test "$EXPECT_TRACE" = "$OBSERVED_TRACE" || fail "$EX_TEMPFAIL" progress.resume.precondition_trace mismatch
-  test "$EXPECT_INPUTS" = "$OBSERVED_INPUTS" || fail "$EX_TEMPFAIL" progress.resume.precondition_inputs mismatch
+  mission_require_preconditions "$MISSION_PROGRESS"
+  mission_validate_approval_receipts "$MISSION_PROGRESS"
+  jq -n --slurpfile progress "$MISSION_PROGRESS" --slurpfile lock "$MISSION_LOCK/owner" \
+    --arg progress_hash "$ACTIVE_HASH" --arg trace "$OBSERVED_TRACE" --arg inputs "$OBSERVED_INPUTS" \
+    --arg git "$GIT_HEAD" --arg toolchain "$OBSERVED_TOOLCHAIN" '
+      {
+        mode:"resume",progress:$progress[0],progress_sha256:$progress_hash,
+        active_progress_sha256:$progress_hash,expected_revision:$progress[0].revision,
+        observed_fingerprints:{trace:$trace,inputs:$inputs,git_head:$git,toolchain:$toolchain},
+        lock:$lock[0]
+      }
+    ' >"$MISSION_WORK/resume-envelope.json" || \
+    fail "$EX_UNAVAILABLE" mission.write_failed resume_envelope
+  jq -e -f "$RUNTIME_ROOT/recipes/progress.jq" "$MISSION_WORK/resume-envelope.json" \
+    >"$MISSION_WORK/resume-projection.json" 2>/dev/null || \
+    fail "$EX_TEMPFAIL" progress.resume.invalid envelope
   ACTIVE_UPDATED=$(jq -r '.updated_at' "$MISSION_PROGRESS") || fail "$EX_DATAERR" progress.resume.corrupt updated_at
   utc_now_after "$ACTIVE_UPDATED" || fail "$EX_UNAVAILABLE" mission.clock_unavailable monotonic
   cp "$MISSION_PROGRESS" "$MISSION_DIR/.sensai-progress.$$.json" || \
@@ -887,12 +1052,14 @@ mission_resume() {
       observed_fingerprints:{trace:$trace,inputs:$inputs,git_head:$git,toolchain:$toolchain}
     }
   ' >"$MISSION_WORK/transition.json" || fail "$EX_UNAVAILABLE" mission.write_failed transition_envelope
-  jq -e -f "$SOURCE_ROOT/output/recipes/progress.jq" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
+  jq -e -f "$RUNTIME_ROOT/recipes/progress.jq" "$MISSION_WORK/transition.json" >/dev/null 2>&1 || \
     fail "$EX_DATAERR" progress.transition.invalid resume_candidate
   write_status_candidate "$RESUME_TMP" "$MISSION_DIR/.sensai-status.$$.md" || \
     fail "$EX_DATAERR" progress.status_invalid resume_candidate
   sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.hash_unavailable pre_rename
   test "$SHA_VALUE" = "$ACTIVE_HASH" || fail "$EX_TEMPFAIL" progress.resume.stale_hash pre_rename
+  mission_lock_verify "$ACTIVE_REVISION" "$ACTIVE_HASH" || \
+    fail "$EX_TEMPFAIL" progress.resume.double_resume lock_mismatch
   mv "$RESUME_TMP" "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.atomic_rename_failed progress
   mv "$MISSION_DIR/.sensai-status.$$.md" "$MISSION_STATUS" || \
     fail "$EX_UNAVAILABLE" mission.atomic_rename_failed status
@@ -900,12 +1067,13 @@ mission_resume() {
   sha256_file "$MISSION_PROGRESS" || fail "$EX_UNAVAILABLE" mission.hash_unavailable committed
   NEW_HASH=$SHA_VALUE
   NEW_REVISION=$(jq -r '.revision' "$MISSION_PROGRESS") || fail "$EX_DATAERR" progress.resume.corrupt committed
-  jq -n --slurpfile progress "$MISSION_PROGRESS" --arg hash "$NEW_HASH" '
+  jq -n --slurpfile progress "$MISSION_PROGRESS" --slurpfile projection "$MISSION_WORK/resume-projection.json" --arg hash "$NEW_HASH" '
     {
       mission_id:$progress[0].mission_id, phase:$progress[0].phase,
       status:$progress[0].status, revision:$progress[0].revision,
       progress_sha256:$hash, next:$progress[0].next,
       todo_snapshot:$progress[0].todo_snapshot,
+      todo:$projection[0].todo,
       model_admission:"UNVERIFIED"
     }
   '

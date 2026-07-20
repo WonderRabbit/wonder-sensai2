@@ -116,6 +116,11 @@ catalog_check_physical_trees() {
       break
     fi
   done
+  if test "$CATALOG_OUTPUT_TREE_OK" -eq 1 && \
+     ! catalog_path_chain_is_physical "$SOURCE_ROOT/bin/sensai" file; then
+    test "$?" -ne 70 || return 70
+    CATALOG_OUTPUT_TREE_OK=0
+  fi
   if test "$CATALOG_OUTPUT_TREE_OK" -eq 1; then
     assert_record catalog.output_physical_tree 0 'output and current runtime leaves have physical non-symlink components' || true
   else
@@ -175,7 +180,7 @@ catalog_check_manifest() {
     assert_record catalog.manifest_safe_paths 1 'unsafe manifest path' || true
   fi
   {
-    printf '%s\n' AGENTS.md opencode.json toolchain.lock.json
+    printf '%s\n' AGENTS.md bin/sensai opencode.json toolchain.lock.json
     for CATALOG_MANIFEST_KIND in agents commands skills schemas recipes; do
       catalog_write_expected "$CATALOG_MANIFEST_KIND" "$RUN_TMP/catalog-manifest-$CATALOG_MANIFEST_KIND.txt" || exit 70
       sed -n 'p' "$RUN_TMP/catalog-manifest-$CATALOG_MANIFEST_KIND.txt"
@@ -186,8 +191,12 @@ catalog_check_manifest() {
   else
     assert_record catalog.manifest_union 1 'manifest/catalog union drift' || true
   fi
-  assert_eq catalog.manifest_count 36 "$(wc -l <"$CATALOG_MANIFEST" | tr -d ' ')" || true
-  if rg -q --no-config '^(fixtures|tests|bin|docs|manifest\.txt)(/|$)' "$CATALOG_MANIFEST"; then
+  assert_eq catalog.manifest_count 37 "$(wc -l <"$CATALOG_MANIFEST" | tr -d ' ')" || true
+  if awk '
+      $0 ~ /^(fixtures|tests|docs|manifest\.txt)(\/|$)/ ||
+      ($0 ~ /^bin\// && $0 != "bin/sensai") {bad=1}
+      END {exit bad ? 0 : 1}
+    ' "$CATALOG_MANIFEST"; then
     assert_record catalog.manifest_repo_separation 1 'repository-side asset included in runtime manifest' || true
   else
     CATALOG_REPO_RC=$?
@@ -435,7 +444,7 @@ catalog_check_docs_parity() {
 
 catalog_clone_source() {
   CATALOG_CLONE=$1
-  mkdir -p "$CATALOG_CLONE/tests/contracts" "$CATALOG_CLONE/plan/prd" "$CATALOG_CLONE/docs/harness" "$CATALOG_CLONE/output" || return 70
+  mkdir -p "$CATALOG_CLONE/tests/contracts" "$CATALOG_CLONE/plan/prd" "$CATALOG_CLONE/docs/harness" "$CATALOG_CLONE/output" "$CATALOG_CLONE/bin" || return 70
   cp "$SOURCE_ROOT/AGENTS.md" "$SOURCE_ROOT/README.md" "$SOURCE_ROOT/STATUS.md" "$SOURCE_ROOT/risk.md" "$CATALOG_CLONE/" || return 70
   cp "$SOURCE_ROOT/plan/todo_list.md" "$CATALOG_CLONE/plan/todo_list.md" || return 70
   cp "$SOURCE_ROOT"/plan/prd/*.md "$CATALOG_CLONE/plan/prd/" || return 70
@@ -444,6 +453,7 @@ catalog_clone_source() {
   cp "$SOURCE_ROOT"/tests/contracts/*.txt "$CATALOG_CLONE/tests/contracts/" || return 70
   cp "$SOURCE_ROOT/output/AGENTS.md" "$SOURCE_ROOT/output/opencode.json" \
     "$SOURCE_ROOT/output/toolchain.lock.json" "$CATALOG_CLONE/output/" || return 70
+  cp "$SOURCE_ROOT/bin/sensai" "$CATALOG_CLONE/bin/sensai" || return 70
 }
 
 catalog_run_mutation() {

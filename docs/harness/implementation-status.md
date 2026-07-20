@@ -2,14 +2,17 @@
 
 > 이 파일은 source-owned 파생 요약이다. schema, runtime, evidence보다 권위가 낮으며 구현 task가 끝날 때 current workspace fingerprint와 함께 갱신한다.
 
-## 2026-07-19 T05 상태
+## 2026-07-20 T27 상태
 
 | 축 | 상태 | 현재 증거 |
 | --- | --- | --- |
 | contract freeze | `COMPLETE` | 제품, mapping, runtime, verification, release 계약 존재 |
-| `LOCAL_IMPLEMENTATION` | `OUTPUT_TOPOLOGY_AND_FIXTURES` | runner/fixture/output contracts는 있고 future runtime leaves는 없음 |
-| `MODEL_ADMISSION` | `UNVERIFIED` | baseline alias만 동결; live call 없음 |
-| `WINDOWS_RECEIPT` | `PENDING_USER_RECEIPT` | 최종 kit와 사용자 receipt 없음 |
+| `LOCAL_IMPLEMENTATION` | `PASS` | 53개 결정적 preflight가 current fingerprint에서 통과 |
+| `MODEL_ADMISSION` | `UNVERIFIED` | live response/tool-use 호출 없음 |
+| `TUI/LIVE_DELEGATION` | `UNVERIFIED` | 실제 session receipt 없음 |
+| `WINDOWS_NATIVE` | `TEST_UNAVAILABLE` | 현재 환경에 Windows 호스트 없음 |
+| `MACOS_STATIC_SUBSTITUTE` | `PASS` | 현재 payload·설정·경로·quoting·checksum 범위 |
+| `WINDOWS_COMPATIBILITY` | `UNVERIFIED` | 실제 Windows 실행 없음 |
 
 ## 동결된 목표
 
@@ -29,16 +32,14 @@
 - 실행 가능한 fail-closed `tests/test.sh`
 - root fixture/golden corpus와 exact-set/hash/14+14 oracle
 - `output/AGENTS.md`와 처음에는 byte-identical로 이동한 뒤 사람용 표시명만 한국어화한 `output/opencode.json`
-- output 상대 2/9/15/2/5 및 36-leaf target catalog
+- output 상대 2/9/15/2/5와 설치 CLI를 포함한 37-leaf target catalog
 - output 사람용 문구·표시명 한국어 계약과 한 단어·짧은 문장·제목·목록 주입 거부 로컬 oracle; 독립 재검증은 `PENDING`
 
-## 아직 없는 증거
+## 외부 또는 후속 단계에 남은 증거
 
-- output schema, recipe, root manifest, installer
-- output agent, command, skill runtime 파일
-- isolated OpenCode semantic load
-- AS-IS/TO-BE deterministic projection
 - live model/TUI/delegation
-- Windows user receipt
+- `VALUE_PROVEN` 전 exact deny인 delivery 후보 5 skill의 입학 영수증과 live F3-F5
+- T29 PowerShell kit와 실제 Windows 실행
+- Windows compatibility 승인
 
-따라서 `LOCAL_IMPLEMENTATION_PASS`, model admission, Windows/cross-platform PASS를 선언하지 않는다.
+따라서 terminal status는 `LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / MACOS_STATIC_SUBSTITUTE_PASS`다. Windows 또는 cross-platform PASS는 선언하지 않는다.

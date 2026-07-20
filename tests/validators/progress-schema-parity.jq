@@ -141,7 +141,18 @@ def transition_issues:
   + issue("progress.precondition";
       ($current.precondition_fingerprints.previous_progress // "") == $env.previous_sha256)
   + issue("progress.approval_history";
-      all($previous.approvals[]?; . as $approval | any($current.approvals[]?; . == $approval)))
+      all($previous.approvals[]?; . as $approval
+        | if $approval.verdict == "accepted" then
+            any($current.approvals[]?; . == $approval)
+          else
+            any($current.approvals[]?;
+              .gate == $approval.gate
+              and (. == $approval or
+                (.verdict == "accepted"
+                  and .actor_role == "human" and .source == "elicited"
+                  and .recorded_at > $approval.recorded_at)))
+          end))
+  + issue("progress.target"; $current.provenance[0] == $previous.provenance[0])
   + issue("progress.timestamp_transition"; $current.updated_at > $previous.updated_at)
   + issue("progress.hard_gate";
       (($previous.phase != "F0" or $current.phase == "F0") or

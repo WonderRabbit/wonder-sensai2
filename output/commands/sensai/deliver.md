@@ -12,6 +12,7 @@ subtask: false
 
 다음 조건을 모두 통과하기 전에는 파일을 쓰지 마라.
 
+- `sensai-dataflow-chart`, `sensai-user-story`, `sensai-test-scenario`가 `VALUE_PROVEN` 입학 영수증에 결합돼 `permission.skill`에서 명시적으로 허용돼야 한다. 현재 정확한 `deny` 상태에서는 `MODEL_ADMISSION_UNVERIFIED`를 보고하고 F5 실시간 실행을 중단한다.
 - `<mission-id>`와 정규 미션 루트가 일치하고 경로가 심볼릭 링크나 다른 미션으로 해석되지 않아야 한다.
 - 현재 `source fingerprint`에 결합된 `F3` 사람 승인 `accepted` 영수증과 검증된 `kind: tobe` `designs[]`, `extension_requirements[]`, `bindings[]`가 있어야 한다.
 - 각 설계의 `follows_convention_ids`, `follows_business_ids`, `requirement_ids`, `evidence_ids`와 `bindings[]` `exact` 연결을 확인한다. `binding` 누락, `dangling ID`, `gate: violation`, 숨긴 `conflict`가 하나라도 있으면 `V0`에서 차단한다.

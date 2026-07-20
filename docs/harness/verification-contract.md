@@ -11,7 +11,9 @@
 | OpenCode load | disposable HOME/XDG/stage의 safe projection | macOS, `1.18.3` |
 | live model | 명시 승인된 모델 실험 receipt | `UNVERIFIED` |
 | TUI/delegation | 실제 non-model 또는 승인된 session receipt | `UNVERIFIED` |
-| Windows | 사용자가 release 후보로 실행한 signed/hashed receipt | `PENDING_USER_RECEIPT` |
+| Windows native | 현재 환경에 없는 Windows 호스트에서의 실제 실행 | `TEST_UNAVAILABLE` |
+| macOS substitute | payload·설정·경로·quoting·checksum의 host-side 결정적 검사 | `PASS` |
+| Windows compatibility | 실제 Windows 실행으로만 승인 | `UNVERIFIED` |
 
 macOS deterministic PASS는 Windows 영수증 없이 진행하고 완성할 수 있다. Windows는 H1/H2의 선행 blocker가 아니며 final user receipt만 담당한다. Windows receipt가 없다는 이유로 local implementation을 멈추지 않지만 cross-platform PASS를 주장하지도 않는다.
 
@@ -32,7 +34,7 @@ macOS deterministic PASS는 Windows 영수증 없이 진행하고 완성할 수 
 `LOCAL_IMPLEMENTATION_PASS`는 다음이 모두 현재 workspace fingerprint에서 통과할 때만 허용한다.
 
 - source-owned Markdown과 상대 링크
-- `output/` relative literal agent 2 / command 9 / skill 15 exact-set와 36-leaf manifest target
+- `output/` relative literal agent 2 / command 9 / skill 15 exact-set와 설치 CLI를 포함한 37-leaf manifest target
 - output 사람용 문구·표시명 한국어와 기계 식별자·문법 원형 보존
 - trace/progress schema와 valid/invalid fixture
 - jq validator와 target mutation
@@ -63,6 +65,8 @@ macOS deterministic PASS는 Windows 영수증 없이 진행하고 완성할 수 
 ## 외부 상태 표기
 
 - `MODEL_ADMISSION_UNVERIFIED`: live response/tool-use 비용을 쓰지 않았거나 입학 matrix가 불완전하다.
-- `WINDOWS_RECEIPT_PENDING`: Windows kit 또는 실제 receipt가 아직 없다.
+- `WINDOWS_TEST_UNAVAILABLE`: 현재 환경에는 Windows 네이티브 테스트 호스트가 없다.
+- `MACOS_STATIC_SUBSTITUTE_PASS`: macOS에서 현재 payload·설정·경로·quoting·checksum의 결정적 대체 검사가 통과했다. Windows 실행 증거는 아니다.
+- `WINDOWS_COMPATIBILITY_UNVERIFIED`: 실제 Windows 실행 없이 호환성 성공을 주장하지 않는다.
 - `WINDOWS_RECEIPT_REJECTED`: receipt schema, version, case, hash, cleanup 중 하나가 실패했다.
 - `WINDOWS_RECEIPT_ACCEPTED`: 사용자가 실제 Windows에서 실행한 current release receipt가 모든 항목을 만족한다.

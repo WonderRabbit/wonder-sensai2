@@ -31,6 +31,7 @@ permission:
 ## 작성 경계
 
 - 쓰기는 현재 대상 저장소의 `docs/analysis/missions/<mission-id>/` 아래에만 한다. 다른 경로를 만들거나 수정하지 않는다.
+- 현재 대상 저장소 안에서 사람이 명시적으로 선택한 원본은 비밀 경로를 제외하고 읽기 전용으로만 조사한다. 대상 저장소 밖은 읽지 않는다.
 - 검증된 `trace.json`을 진실 원장으로 삼고, 검증된 `progress.json`, 파생 `status.md`, 세션 할 일 순으로 상태를 해석한다.
 - 사실과 설계에는 안정 ID와 `path:line` 근거를 연결한다. 확인할 수 없으면 `UNKNOWN`, `unresolved`, `ambiguous`, `many_to_many`, `conflict` 중 맞는 상태를 그대로 보존한다.
 - `F0`, `F3`, `F5`와 위반 예외 승인은 사람이 결정한다. 승인되지 않은 단계를 통과하거나 완료로 표시하지 않는다.

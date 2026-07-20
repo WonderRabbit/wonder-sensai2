@@ -10,7 +10,7 @@ subtask: false
 
 ## F0 시작 선행조건
 
-결정적 파일 초기화는 저장소 루트에서 `./bin/sensai mission init <mission-id> <target-relative-path> <goal>`을 호출해 수행한다. 인자는 데이터로만 전달하고 사용자가 준 문자열을 다시 셸 코드로 조립하지 않는다. `CLI`가 `exit` `0`과 `INITIALIZED` 영수증을 반환하기 전에는 모델이 같은 파일을 대신 만들지 않는다.
+결정적 파일 초기화는 대상 저장소에서 `"$OPENCODE_CONFIG_DIR/bin/sensai" mission init <mission-id> <target-relative-path> <goal>`을 호출해 수행한다. `OPENCODE_CONFIG_DIR`가 비어 있거나 절대 경로가 아니거나 설치된 `bin/sensai`가 정규 실행 파일이 아니면 중단한다. 인자는 데이터로만 전달하고 사용자가 준 문자열을 다시 셸 코드로 조립하지 않는다. `CLI`가 `exit` `0`과 `INITIALIZED` 영수증을 반환하기 전에는 모델이 같은 파일을 대신 만들지 않는다.
 
 다음 조건을 모두 통과하기 전에는 미션 파일을 쓰지 마라.
 
@@ -29,14 +29,16 @@ subtask: false
 2. `F1`: `/sensai/analyze`로 AS-IS 기술 사실과 컨벤션을 적재한다.
 3. `F2`: `/sensai/analyze-business`로 AS-IS 비즈니스 사실을 적재한다. 조사는 F1과 나눌 수 있어도 같은 `trace.json` 병합은 직렬이다.
 4. `F3`: `/sensai/document-asis`로 AS-IS 네 산출을 만들고 사람 승인을 기다린다.
-5. `F4`: 승인된 AS-IS와 수정요청을 `/sensai/change-design`으로 설계한다.
-6. `F5`: `/sensai/deliver`로 TO-BE 다섯 산출을 만들고 `/sensai/verify` 성공 후 사람의 미션 승인을 기다린다.
+5. `F4`: 승인된 AS-IS와 수정요청을 `/sensai/change-design`으로 설계하되 필요한 산출 후보 스킬이 `VALUE_PROVEN`으로 입학되고 명시적으로 허용되지 않았으면 `MODEL_ADMISSION_UNVERIFIED`로 중단한다.
+6. `F5`: 같은 입학 조건이 충족된 경우에만 `/sensai/deliver`로 TO-BE 다섯 산출을 만들고 `/sensai/verify` 성공 후 사람의 미션 승인을 기다린다.
 
 `/sensai/document-asis`, `/sensai/change-design`, `/sensai/deliver`의 소유권을 하나의 명령으로 합치거나 폐기된 단일 설계 명령을 호출하지 마라. 선행 단계 또는 결정적 검증이 실패하면 다음 단계로 넘어가지 않고 `blocked[]`, `unknowns[]`, `next`에 사실 그대로 기록한다.
 
 ## 사람 승인 영수증
 
 `F0`, `F3`, `F5`는 `hard` 게이트다. 각 승인은 현재 원장·입력 지문과 결합된 정확한 `docs/analysis/missions/<mission-id>/approvals/<gate>-approval.json` 파일이어야 한다. `actor_role: human`, `source: elicited`, `verdict: accepted|rejected`, 비어 있지 않은 `reason`, `UTC` `recorded_at`과 실제 영수증 `SHA-256`을 확인한다.
+
+승인 영수증은 `mission_id`, `gate`, `verdict`, `reason`, `actor_role`, `source`, `recorded_at`, `trace_sha256`, `inputs_sha256`만 가진 닫힌 JSON 객체다. `progress.json`의 승인 항목은 같은 값과 영수증 상대 경로·실제 해시를 가리켜야 한다. 현재 `trace` 또는 입력 지문과 맞지 않는 과거 영수증은 재사용하지 않는다.
 
 - `F0`의 `accepted` 영수증 전에는 F1에 진입하지 않는다.
 - `F3`의 `accepted` 영수증 전에는 F4에 진입하지 않는다.
@@ -55,7 +57,7 @@ subtask: false
 5. 검증 성공 뒤에만 같은 미션 디렉터리의 임시 파일을 원자적 rename하여 `progress.json`을 교체한다. 부분 파일이나 미검증 후보를 정규 경로에 남기지 않는다.
 6. `progress.jq` `status` 모드의 출력으로 `status.md`를 생성하고, 마지막으로 세션 todo를 갱신한다.
 
-검증된 후보 `progress`를 반영할 때는 `./bin/sensai mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>`을 사용한다. `exit` `75`는 다른 작성자가 먼저 갱신했거나 잠금이 있다는 뜻이므로 덮어쓰기나 자동 재시도를 하지 않는다.
+검증된 후보 `progress`를 반영할 때는 `"$OPENCODE_CONFIG_DIR/bin/sensai" mission checkpoint <mission-id> <candidate-progress.json> <expected-revision> <expected-sha256>`을 사용한다. `exit` `75`는 다른 작성자가 먼저 갱신했거나 잠금이 있다는 뜻이므로 덮어쓰기나 자동 재시도를 하지 않는다.
 
 진실 우선순위는 검증된 `trace.json` > 검증된 `progress.json` > 파생 `status.md` > 세션 `todo`다. `status.md`나 `todo`를 원장 또는 `progress`보다 먼저 쓰거나, 서로 다를 때 하위 뷰를 진실로 채택하지 마라.
 

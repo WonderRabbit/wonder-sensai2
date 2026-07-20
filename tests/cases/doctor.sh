@@ -216,11 +216,12 @@ doctor_run() {
     assert_record doctor.invalid_path_no_write 1 '잘못된 mission ID가 외부 파일을 썼다' || true
   fi
 
-  if rg -q --no-config './bin/sensai mission init' "$SOURCE_ROOT/output/commands/sensai/run.md" && \
-     rg -q --no-config './bin/sensai mission checkpoint' "$SOURCE_ROOT/output/commands/sensai/run.md" && \
-     rg -q --no-config './bin/sensai mission resume' "$SOURCE_ROOT/output/commands/sensai/resume.md" && \
-     rg -q --no-config './bin/sensai mission status' "$SOURCE_ROOT/output/commands/sensai/status.md"; then
-    assert_record doctor.command_binding 0 'run/resume/status command가 결정적 mission helper에 결합됐다' || true
+  if rg -F -q --no-config '"$OPENCODE_CONFIG_DIR/bin/sensai" mission init' "$SOURCE_ROOT/output/commands/sensai/run.md" && \
+     rg -F -q --no-config '"$OPENCODE_CONFIG_DIR/bin/sensai" mission checkpoint' "$SOURCE_ROOT/output/commands/sensai/run.md" && \
+     rg -F -q --no-config '"$OPENCODE_CONFIG_DIR/bin/sensai" mission resume' "$SOURCE_ROOT/output/commands/sensai/resume.md" && \
+     rg -F -q --no-config '"$OPENCODE_CONFIG_DIR/bin/sensai" mission status' "$SOURCE_ROOT/output/commands/sensai/status.md" && \
+     ! rg -q --no-config '(^|[^A-Z_])\./bin/sensai mission' "$SOURCE_ROOT/output/commands/sensai"; then
+    assert_record doctor.command_binding 0 'run/resume/status command가 설치된 결정적 mission helper에 결합됐다' || true
   else
     assert_record doctor.command_binding 1 'command와 mission helper 결합이 빠졌다' || true
   fi

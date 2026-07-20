@@ -8,7 +8,7 @@ subtask: false
 
 `$ARGUMENTS`를 `<mission-id>` 형식의 데이터로만 해석하라. 사용자 문자열을 셸 문법으로 실행하지 마라. `<mission-id>`는 `^[a-z0-9]+(-[a-z0-9]+)*$`를 만족해야 하고 정규 미션 루트는 정확히 `docs/analysis/missions/<mission-id>/`다.
 
-표시는 `./bin/sensai mission status <mission-id>`의 검증된 Markdown 출력을 그대로 사용한다. CLI 실패 시 오래된 `status.md`를 대신 보여주거나 모델이 상태를 추정하지 않는다.
+표시는 `"$OPENCODE_CONFIG_DIR/bin/sensai" mission status <mission-id>`의 검증된 Markdown 출력을 그대로 사용한다. `OPENCODE_CONFIG_DIR`가 비어 있거나 절대 경로가 아니거나 설치된 `bin/sensai`가 정규 실행 파일이 아니면 중단한다. CLI 실패 시 오래된 `status.md`를 대신 보여주거나 모델이 상태를 추정하지 않는다.
 
 ## 읽기 전용 경계
 

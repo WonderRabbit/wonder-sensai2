@@ -15,6 +15,8 @@ self_prepare_unborn_root() {
   SELF_ROOT=$1
   mkdir -p "$SELF_ROOT" || return 1
   git -C "$SELF_ROOT" init -q || return 1
+  printf '%s\n' '.DS_Store' '.omo/' '.debug-journal.md' '.private-state/' \
+    >>"$SELF_ROOT/.git/info/exclude" || return 1
   printf 'untracked fingerprint canary\n' >"$SELF_ROOT/marker.txt" || return 1
 }
 
@@ -63,6 +65,73 @@ case_self() {
   self_run source-root-ds-store-excluded env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-ds-store"
   assert_eq self.ds_store_exclusion_exit 0 "$?" || true
   assert_jq self.ds_store_exclusion_receipt ".source.fingerprint == \"$SELF_FINGERPRINT_BEFORE_DS_STORE\" and .source.file_count == 1 and .source.untracked_count == 1 and ([.source.untracked_inventory[] | select(test(\"(^|/)\\\\.DS_Store$\"))] | length) == 0" "$SELF_BASE/fingerprint-ds-store/receipt.json" || true
+
+  mkdir "$SELF_UNBORN_ROOT/.omo" || return 70
+  printf 'orchestrator state canary\n' >"$SELF_UNBORN_ROOT/.omo/ledger.jsonl" || return 70
+  self_run source-root-omo-excluded env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-omo"
+  assert_eq self.omo_exclusion_exit 0 "$?" || true
+  assert_jq self.omo_exclusion_receipt ".source.fingerprint == \"$SELF_FINGERPRINT_BEFORE_DS_STORE\" and .source.file_count == 1 and .source.untracked_count == 1 and ([.source.untracked_inventory[] | select(startswith(\"?? .omo\"))] | length) == 0" "$SELF_BASE/fingerprint-omo/receipt.json" || true
+
+  printf 'temporary debug journal\n' >"$SELF_UNBORN_ROOT/.debug-journal.md" || return 70
+  self_run source-root-debug-journal-created env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-debug-journal-created"
+  assert_eq self.debug_journal_created_exit 0 "$?" || true
+  assert_jq self.debug_journal_created_receipt ".source.fingerprint == \"$SELF_FINGERPRINT_BEFORE_DS_STORE\" and .source.file_count == 1 and .source.untracked_count == 1 and (.source.untracked_inventory | index(\"?? .debug-journal.md\")) == null" "$SELF_BASE/fingerprint-debug-journal-created/receipt.json" || true
+
+  printf 'modified temporary debug journal\n' >"$SELF_UNBORN_ROOT/.debug-journal.md" || return 70
+  self_run source-root-debug-journal-modified env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-debug-journal-modified"
+  assert_eq self.debug_journal_modified_exit 0 "$?" || true
+  assert_jq self.debug_journal_modified_receipt ".source.fingerprint == \"$SELF_FINGERPRINT_BEFORE_DS_STORE\" and .source.file_count == 1 and .source.untracked_count == 1" "$SELF_BASE/fingerprint-debug-journal-modified/receipt.json" || true
+
+  rm "$SELF_UNBORN_ROOT/.debug-journal.md" || return 70
+  self_run source-root-debug-journal-deleted env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-debug-journal-deleted"
+  assert_eq self.debug_journal_deleted_exit 0 "$?" || true
+  assert_jq self.debug_journal_deleted_receipt ".source.fingerprint == \"$SELF_FINGERPRINT_BEFORE_DS_STORE\" and .source.file_count == 1 and .source.untracked_count == 1" "$SELF_BASE/fingerprint-debug-journal-deleted/receipt.json" || true
+
+  printf 'similar root path remains source\n' >"$SELF_UNBORN_ROOT/.debug-journal.md.keep" || return 70
+  printf 'nested product remains source\n' >"$SELF_UNBORN_ROOT/nested/product.md" || return 70
+  self_run source-root-debug-journal-similar-included env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-debug-journal-similar"
+  assert_eq self.debug_journal_similar_exit 0 "$?" || true
+  assert_jq self.debug_journal_similar_receipt ".source.fingerprint != \"$SELF_FINGERPRINT_BEFORE_DS_STORE\" and .source.file_count == 3 and .source.untracked_count == 3 and (.source.untracked_inventory | index(\"?? .debug-journal.md.keep\")) != null and (.source.untracked_inventory | index(\"?? nested/product.md\")) != null" "$SELF_BASE/fingerprint-debug-journal-similar/receipt.json" || true
+  SELF_PRODUCT_FINGERPRINT=$(jq -r '.source.fingerprint' "$SELF_BASE/fingerprint-debug-journal-similar/receipt.json") || return 70
+
+  mkdir "$SELF_UNBORN_ROOT/.private-state" || return 70
+  printf 'ignored private state\n' >"$SELF_UNBORN_ROOT/.private-state/session.log" || return 70
+  self_run source-root-private-state-ignored env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-private-state"
+  assert_eq self.private_state_ignored_exit 0 "$?" || true
+  assert_jq self.private_state_ignored_receipt ".source.fingerprint == \"$SELF_PRODUCT_FINGERPRINT\" and .source.file_count == 3 and .source.untracked_count == 3 and ([.source.untracked_inventory[] | select(contains(\".private-state\"))] | length) == 0" "$SELF_BASE/fingerprint-private-state/receipt.json" || true
+
+  printf 'tracked before ignore\n' >"$SELF_UNBORN_ROOT/tracked-private.md" || return 70
+  git -C "$SELF_UNBORN_ROOT" add tracked-private.md || return 70
+  printf '%s\n' 'tracked-private.md' >>"$SELF_UNBORN_ROOT/.git/info/exclude" || return 70
+  self_run source-root-tracked-then-ignored env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-tracked-ignored"
+  assert_eq self.tracked_then_ignored_exit 0 "$?" || true
+  assert_jq self.tracked_then_ignored_receipt ".source.fingerprint != \"$SELF_PRODUCT_FINGERPRINT\" and .source.file_count == 4 and ([.source.untracked_inventory[] | select(endswith(\"tracked-private.md\"))] | length) == 1" "$SELF_BASE/fingerprint-tracked-ignored/receipt.json" || true
+  SELF_TRACKED_FINGERPRINT=$(jq -r '.source.fingerprint' "$SELF_BASE/fingerprint-tracked-ignored/receipt.json") || return 70
+
+  printf 'tracked and modified after ignore\n' >"$SELF_UNBORN_ROOT/tracked-private.md" || return 70
+  self_run source-root-tracked-ignored-modified env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-tracked-ignored-modified"
+  assert_eq self.tracked_ignored_modified_exit 0 "$?" || true
+  assert_jq self.tracked_ignored_modified_receipt ".source.fingerprint != \"$SELF_TRACKED_FINGERPRINT\" and .source.file_count == 4 and ([.source.untracked_inventory[] | select(endswith(\"tracked-private.md\"))] | length) == 1" "$SELF_BASE/fingerprint-tracked-ignored-modified/receipt.json" || true
+
+  printf 'tracked regular placeholder\n' >"$SELF_UNBORN_ROOT/tracked-link.md" || return 70
+  git -C "$SELF_UNBORN_ROOT" add tracked-link.md || return 70
+  rm "$SELF_UNBORN_ROOT/tracked-link.md" || return 70
+  ln -s marker.txt "$SELF_UNBORN_ROOT/tracked-link.md" || return 70
+  self_run source-root-tracked-symlink-rejected env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-tracked-symlink"
+  assert_eq self.tracked_symlink_rejected_exit 70 "$?" || true
+  assert_jq self.tracked_symlink_rejected_receipt '.result == "INFRASTRUCTURE_ERROR" and .exit == 70 and (.reason_codes | index("SOURCE_FINGERPRINT_FAILED")) != null' "$SELF_BASE/fingerprint-tracked-symlink/receipt.json" || true
+  rm "$SELF_UNBORN_ROOT/tracked-link.md" || return 70
+  git -C "$SELF_UNBORN_ROOT" rm --cached -f -q tracked-link.md || return 70
+
+  printf 'tracked regular placeholder\n' >"$SELF_UNBORN_ROOT/tracked-nonregular.md" || return 70
+  git -C "$SELF_UNBORN_ROOT" add tracked-nonregular.md || return 70
+  rm "$SELF_UNBORN_ROOT/tracked-nonregular.md" || return 70
+  mkfifo "$SELF_UNBORN_ROOT/tracked-nonregular.md" || return 70
+  self_run source-root-tracked-nonregular-rejected env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT="$SELF_UNBORN_ROOT" "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/fingerprint-tracked-nonregular"
+  assert_eq self.tracked_nonregular_rejected_exit 70 "$?" || true
+  assert_jq self.tracked_nonregular_rejected_receipt '.result == "INFRASTRUCTURE_ERROR" and .exit == 70 and (.reason_codes | index("SOURCE_FINGERPRINT_FAILED")) != null' "$SELF_BASE/fingerprint-tracked-nonregular/receipt.json" || true
+  rm "$SELF_UNBORN_ROOT/tracked-nonregular.md" || return 70
+  git -C "$SELF_UNBORN_ROOT" rm --cached -f -q tracked-nonregular.md || return 70
 
   self_run source-root-escape env SENSAI_TEST_INTERNAL=1 SENSAI_TEST_SOURCE_ROOT=../escape "$TEST_RUNNER" __fingerprint-probe --evidence "$SELF_BASE/escape"
   assert_eq self.source_root_escape_exit 70 "$?" || true

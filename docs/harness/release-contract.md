@@ -6,9 +6,12 @@
 | --- | --- | --- |
 | `LOCAL_IMPLEMENTATION_PASS` | macOS deterministic source/runtime/preflight가 current hash에서 통과 | 모델·Windows를 포함하지 않음 |
 | `MODEL_ADMISSION_UNVERIFIED` | live model response/tool-use 입학 미완료 | alias discovery/load와 별도 |
-| `WINDOWS_RECEIPT_PENDING` | Windows 최종 사용자 영수증 미수신 | local PASS를 차단하지 않음 |
+| `WINDOWS_TEST_UNAVAILABLE` | 현재 환경에 Windows 네이티브 테스트 호스트가 없음 | local PASS를 차단하지 않음 |
+| `MACOS_STATIC_SUBSTITUTE_PASS` | 현재 payload·설정·경로·quoting·checksum의 macOS 결정적 대체 검사가 통과 | Windows 호환성 승인과 별도 |
 
 release archive는 첫 label이 실제 성립할 때만 만들 수 있다. archive나 Markdown에 PASS 문자열을 적는 것 자체는 증거가 아니다.
+
+`LOCAL_IMPLEMENTATION_PASS`는 설치 CLI, core와 AS-IS 결정적 경로까지의 로컬 구현 상태다. `sensai-dataflow-chart`, `sensai-user-story`, `sensai-requirement-analyze`, `sensai-change-design`, `sensai-test-scenario`는 `VALUE_PROVEN` 전 exact deny이며 live F3-F5 성공은 `MODEL_ADMISSION_UNVERIFIED` 축에 남는다.
 
 ## local release 후보
 
@@ -24,9 +27,11 @@ local release 후보는 다음을 포함한다.
 
 secret, raw model transcript, `.omo`, git metadata, runtime mission output, fixture 실행 상태, 외부 symlink target은 포함하지 않는다.
 
-## Windows 최종 사용자 receipt
+## Windows 네이티브 테스트 경계
 
-Windows는 구현 선행 gate가 아니다. release 후보와 native PowerShell receipt kit가 완성된 뒤 사용자만 실제 Win10/PowerShell 환경에서 실행한다. receipt는 최소 다음을 가져야 한다.
+현재 저장소에는 Windows 테스트 환경이 없으므로 네이티브 상태는 `TEST_UNAVAILABLE`, 호환성은 `UNVERIFIED`다. macOS 대체 검사는 현재 payload exact-set, OpenCode 설정 projection, POSIX 경로와 quoting, manifest checksum만 다루며 PowerShell kit는 T29에서 별도로 구현한다. 대체 검사를 Windows 실행 증거로 승격하지 않는다.
+
+향후 실제 Windows receipt를 받는 경우 최소 다음을 가져야 한다.
 
 - OS, PowerShell, OpenCode, 필수 CLI product/version
 - release archive와 kit SHA-256
@@ -34,11 +39,11 @@ Windows는 구현 선행 gate가 아니다. release 후보와 native PowerShell 
 - temp, environment, process, port cleanup
 - 실행 시각과 release fingerprint
 
-현재 kit는 존재하지 않으므로 정확한 사용자 명령을 아직 발행하지 않는다. kit가 구현된 뒤 문서화된 `pwsh -File ...` 명령만 canonical 명령이 된다. macOS의 정적 PowerShell 검사는 `WINDOWS_RECEIPT_ACCEPTED`를 만들 수 없다.
+현재 kit는 존재하지 않으므로 정확한 사용자 명령을 아직 발행하지 않는다. kit가 구현된 뒤 문서화된 `pwsh -File ...` 명령만 canonical 명령이 된다. macOS 대체 검사는 Windows compatibility PASS를 만들 수 없다.
 
 ## publication 금지
 
-현재 권한으로 commit, tag, push, PR, upload, package registry publication, 실제 전역 OpenCode 설치를 수행하지 않는다. local archive도 publish가 아니며 source와 receipt hash로만 식별한다.
+승인되지 않은 tag, PR, upload, package registry publication, 실제 전역 OpenCode 설치를 수행하지 않는다. local archive도 publish가 아니며 source와 receipt hash로만 식별한다.
 
 ## 실패와 퇴출
 

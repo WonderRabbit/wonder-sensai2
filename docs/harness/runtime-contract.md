@@ -18,6 +18,8 @@ output의 사람이 읽는 제목, 설명, 지침, provider/model 표시명은 �
 
 `opencode debug`는 초기화 파일을 쓸 수 있는 mutating diagnostic이다. source tree나 실제 HOME에서 acceptance 명령으로 실행하지 않는다.
 
+stage 공개 직후에는 canonical `output/` 36개 leaf와 repository-side CLI를 설치 root의 `bin/sensai`로 배치한 manifest 37개 leaf만 있어야 한다. 설치 CLI는 source와 byte-identical하고 실행 가능해야 하며, 명령은 대상 CWD의 상대 CLI가 아니라 `"$OPENCODE_CONFIG_DIR/bin/sensai"`만 호출한다. OpenCode `1.18.3` debug 초기화는 disposable config root에 `.gitignore`를 추가하므로 load 뒤에는 원래 37개 leaf의 byte 불변과 이 단일 추가 leaf를 분리해 검사한다.
+
 ## AGENTS와 instructions
 
 루트 `AGENTS.md`는 contributor/fixture 계약이며 stage에 복사하지 않는다. runtime 계약 `output/AGENTS.md`는 manifest leaf로 stage에 `AGENTS.md`로 배치하지만 custom config directory에서 자동 로드된다고 가정하지 않는다. runtime에 필요한 증거, 권한, UNKNOWN, single-writer, gate 규칙은 config/agent/command/skill에도 명시적으로 반복한다. 장비별 절대 경로의 `instructions`가 없으면 동작하지 않는 설계는 실패다.
@@ -56,6 +58,7 @@ canonical trace는 7 convention category, 비즈니스 사실, AS-IS/TO-BE kind,
 ## permission 경계
 
 - lead write: 현재 mission root만
+- lead와 peer read: 현재 대상 저장소 안에서 명시적으로 선택된 source만, 비밀 경로 제외
 - lead task: explicit peer만
 - peer: edit, task, todowrite, verdict 금지
 - shell: 식별된 독립 CLI의 read/validate/render 호출만
@@ -65,4 +68,4 @@ permission은 의도와 사용자 승인 UI를 제공하지만 OS sandbox가 아
 
 ## 상태 표기
 
-runtime 구현과 local deterministic QA가 실제 통과하기 전 `LOCAL_IMPLEMENTATION_PASS`를 출력하지 않는다. 모델은 `MODEL_ADMISSION_UNVERIFIED`, Windows는 `WINDOWS_RECEIPT_PENDING`으로 분리한다.
+runtime 구현과 local deterministic QA가 실제 통과하기 전 `LOCAL_IMPLEMENTATION_PASS`를 출력하지 않는다. 이 PASS는 core·install·AS-IS 결정적 범위이며 live F3-F5 성공이 아니다. delivery 후보 5 skill은 `VALUE_PROVEN` 전 exact deny이고 모델은 `MODEL_ADMISSION_UNVERIFIED`다. Windows native는 `WINDOWS_TEST_UNAVAILABLE`, compatibility는 `WINDOWS_COMPATIBILITY_UNVERIFIED`, macOS 대체 검사는 `MACOS_STATIC_SUBSTITUTE_PASS`로 분리한다.

@@ -114,7 +114,7 @@ commands_delivery_check_runtime() {
   fi
 
   if test -f "$COMMANDS_DELIVERY_CHANGE" && commands_delivery_ordered "$COMMANDS_DELIVERY_CHANGE" \
-    'sensai-evidence-first' 'sensai-requirement-analyze' 'sensai-change-design'; then
+    '1. `sensai-evidence-first`' '2. `sensai-requirement-analyze`' '3. `sensai-change-design`'; then
     assert_record commands-delivery.change_skill_order 0 '변경 설계 skill 순서가 명시됐다' || true
   else
     assert_record commands-delivery.change_skill_order 1 '변경 설계 skill 순서가 없거나 뒤바뀌었다' || true
@@ -140,8 +140,8 @@ commands_delivery_check_runtime() {
   fi
 
   if test -f "$COMMANDS_DELIVERY_DELIVER" && commands_delivery_ordered "$COMMANDS_DELIVERY_DELIVER" \
-    'sensai-evidence-first' 'sensai-ui-definition' 'sensai-mermaid-sequence' \
-    'sensai-dataflow-chart' 'sensai-user-story' 'sensai-test-scenario'; then
+    '1. `sensai-evidence-first`' '2. `sensai-ui-definition`' '3. `sensai-mermaid-sequence`' \
+    '4. `sensai-dataflow-chart`' '5. `sensai-user-story`' '6. `sensai-test-scenario`'; then
     assert_record commands-delivery.deliver_skill_order 0 'TO-BE 투영 skill 순서가 명시됐다' || true
   else
     assert_record commands-delivery.deliver_skill_order 1 'TO-BE 투영 skill 순서가 없거나 뒤바뀌었다' || true

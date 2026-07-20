@@ -12,7 +12,9 @@ skills_delivery_clone_source() {
   cp "$SOURCE_ROOT/AGENTS.md" "$SKILLS_DELIVERY_CLONE_ROOT/AGENTS.md" || return 70
   cp -R "$SOURCE_ROOT/tests" "$SKILLS_DELIVERY_CLONE_ROOT/tests" || return 70
   cp -R "$SOURCE_ROOT/fixtures" "$SKILLS_DELIVERY_CLONE_ROOT/fixtures" || return 70
+  cp -R "$SOURCE_ROOT/output/commands" "$SKILLS_DELIVERY_CLONE_ROOT/output/" || return 70
   cp -R "$SOURCE_ROOT/output/skills" "$SKILLS_DELIVERY_CLONE_ROOT/output/skills" || return 70
+  cp "$SOURCE_ROOT/output/opencode.json" "$SKILLS_DELIVERY_CLONE_ROOT/output/" || return 70
 }
 
 skills_delivery_check_runtime() {
@@ -73,7 +75,9 @@ skills_delivery_check_runtime() {
       SKILLS_DELIVERY_EVIDENCE_OK=0
     fi
     if ! rg -q --no-config '스킬 로드는 권한을 추가하지 않는다' "$SKILLS_DELIVERY_BODY" || \
-       ! rg -q --no-config '현재 미션 루트' "$SKILLS_DELIVERY_BODY"; then
+       ! rg -q --no-config '현재 대상 저장소.*명시적으로 선택된 원본.*읽기 전용' "$SKILLS_DELIVERY_BODY" || \
+       ! rg -q --no-config '대상 저장소 밖.*읽지' "$SKILLS_DELIVERY_BODY" || \
+       ! rg -q --no-config '쓰기.*현재 미션 루트' "$SKILLS_DELIVERY_BODY"; then
       SKILLS_DELIVERY_PERMISSION_OK=0
     fi
     for SKILLS_DELIVERY_STATE in REQUIRED_TO_EVALUATE NOT_ADMITTED ADMITTED_NO_VALUE VALUE_PROVEN; do
@@ -189,6 +193,29 @@ EOF
 $SKILLS_DELIVERY_PATHS
 EOF
   assert_eq skills-delivery.not_promoted 0 "$SKILLS_DELIVERY_PROMOTED" || true
+  SKILLS_DELIVERY_VALUE_GATE_OK=1
+  for SKILLS_DELIVERY_VALUE_GATE_FILE in \
+    "$SOURCE_ROOT/output/commands/sensai/change-design.md" \
+    "$SOURCE_ROOT/output/commands/sensai/deliver.md"; do
+    if ! rg -q --no-config 'VALUE_PROVEN.*입학.*permission\.skill.*허용' \
+      "$SKILLS_DELIVERY_VALUE_GATE_FILE"; then
+      SKILLS_DELIVERY_VALUE_GATE_OK=0
+    fi
+  done
+  if jq -e '
+      .permission.skill["sensai-dataflow-chart"] == null and
+      .permission.skill["sensai-user-story"] == null and
+      .permission.skill["sensai-requirement-analyze"] == null and
+      .permission.skill["sensai-change-design"] == null and
+      .permission.skill["sensai-test-scenario"] == null
+    ' "$SOURCE_ROOT/output/opencode.json" >/dev/null 2>&1 && \
+     test "$SKILLS_DELIVERY_VALUE_GATE_OK" -eq 1; then
+    assert_record skills-delivery.value_proven_gate 0 \
+      'delivery 후보 5 skill은 VALUE_PROVEN 전 exact deny다' || true
+  else
+    assert_record skills-delivery.value_proven_gate 1 \
+      'delivery 후보 5 skill의 admission deny 계약이 다르다' || true
+  fi
 
   for SKILLS_DELIVERY_FIXTURE in \
     fixtures/inputs/change/valid.md \

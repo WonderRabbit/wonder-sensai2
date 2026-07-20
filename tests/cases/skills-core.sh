@@ -81,7 +81,9 @@ skills_core_check_runtime() {
       SKILLS_CORE_EVIDENCE_OK=0
     fi
     if ! rg -q --no-config '스킬 로드는 권한을 추가하지 않는다' "$SKILLS_CORE_BODY" || \
-       ! rg -q --no-config '현재 미션 루트' "$SKILLS_CORE_BODY"; then
+       ! rg -q --no-config '현재 대상 저장소.*명시적으로 선택된 원본.*읽기 전용' "$SKILLS_CORE_BODY" || \
+       ! rg -q --no-config '대상 저장소 밖.*읽지' "$SKILLS_CORE_BODY" || \
+       ! rg -q --no-config '쓰기.*현재 미션 루트' "$SKILLS_CORE_BODY"; then
       SKILLS_CORE_PERMISSION_OK=0
     fi
     if ! rg -q --no-config '부분 산출물을 완료로 표시하지 않는다' "$SKILLS_CORE_BODY"; then

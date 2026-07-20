@@ -130,7 +130,7 @@ config_check_runtime() {
   assert_jq config.permission_order '
     (.permission.read | keys_unsorted) == ["*","*.env","*.env.*","*.pem","*id_rsa*","*credentials*","*secrets.*","auth.json","**/.env","**/.env.*","**/auth.json","**/.ssh/**","**/.aws/**","**/.config/opencode/**","**/.local/share/opencode/**"] and
     (.permission.edit | keys_unsorted) == ["*","docs/analysis/missions/**","**/../**"] and
-    (.permission.bash | keys_unsorted) == ["*","fd","fd *","rg","rg *","sg","sg *","jq","jq *","yq","yq *","mdq","mdq *","mmdc","mmdc *","*|*","*>*","*<*","*`*","*$(*","*;*","*&&*","*||*","fd *--exec*","fd *-x*","fd *-X*","rg *--pre*","sg *--rewrite*","sg *-r*","sg *--update-all*","yq *-i*","yq *--inplace*","**.env*","**.pem*","**id_rsa*","**credentials*","**secrets.*","**/auth.json*","**/.ssh/**","**/.aws/**","**/.config/opencode/**","**/.local/share/opencode/**"] and
+    (.permission.bash | keys_unsorted) == ["*","fd","fd *","rg","rg *","sg","sg *","jq","jq *","yq","yq *","mdq","mdq *","mmdc","mmdc *","\"$OPENCODE_CONFIG_DIR/bin/sensai\" mission init *","\"$OPENCODE_CONFIG_DIR/bin/sensai\" mission checkpoint *","\"$OPENCODE_CONFIG_DIR/bin/sensai\" mission resume *","\"$OPENCODE_CONFIG_DIR/bin/sensai\" mission status *","*|*","*>*","*<*","*`*","*$(*","*;*","*&&*","*||*","fd *--exec*","fd *-x*","fd *-X*","rg *--pre*","sg *--rewrite*","sg *-r*","sg *--update-all*","yq *-i*","yq *--inplace*","**.env*","**.pem*","**id_rsa*","**credentials*","**secrets.*","**/auth.json*","**/.ssh/**","**/.aws/**","**/.config/opencode/**","**/.local/share/opencode/**"] and
     (.permission.task | keys_unsorted) == ["*","sensai-evidence-peer"] and
     (.permission.skill | keys_unsorted) == ["*","sensai-business-trace","sensai-checklist","sensai-convention-extract","sensai-evidence-first","sensai-mermaid-sequence","sensai-react-trace","sensai-spec-evidence","sensai-stack-discovery","sensai-ui-definition","sensai-vertx-trace"]
   ' "$CONFIG_FILE" || true
@@ -149,8 +149,8 @@ config_check_runtime() {
     .permission.lsp == "deny" and
     .permission.doom_loop == "deny" and
     all(.permission.bash | to_entries[0:1][]; .value == "deny") and
-    all(.permission.bash | to_entries[1:15][]; .value == "allow") and
-    all(.permission.bash | to_entries[15:][]; .value == "deny")
+    all(.permission.bash | to_entries[1:19][]; .value == "allow") and
+    all(.permission.bash | to_entries[19:][]; .value == "deny")
   ' "$CONFIG_FILE" || true
 
   assert_jq config.forbidden_sections '

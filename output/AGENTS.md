@@ -24,10 +24,11 @@
 - 비밀 정보, 자격 증명, 실제 `HOME`, 전역 OpenCode 설정, 미션 밖의 파일을 읽거나 수정하지 않는다.
 - 스키마와 `jq` 검증기의 실패를 지침 판단으로 덮어쓰지 않는다. 실패 시 부분 산출물을 완료로 표시하지 않는다.
 - 실시간 모델 호출, 외부 공유, 전역 설정 변경, 임의 플러그인·`MCP`·사용자 정의 도구 추가는 별도 승인 없이는 금지한다.
+- `sensai-dataflow-chart`, `sensai-user-story`, `sensai-requirement-analyze`, `sensai-change-design`, `sensai-test-scenario`는 `VALUE_PROVEN` 입학 전에는 `permission.skill`에서 정확히 `deny` 상태다. 자동 허용하거나 `F3-F5` 실시간 성공을 주장하지 않는다.
 - 이 지침과 OpenCode `permission`은 행동 경계와 승인 정책이며 운영체제 샌드박스가 아니다. 파일시스템·프로세스·네트워크 격리를 제공한다고 주장하지 않는다.
 
 ## 상태의 한계
 
-현재 공급자·모델 값은 설정 적재 기준선일 뿐이다. 실시간 응답, 도구 호출, 구조화 출력, 위임은 `MODEL_ADMISSION_UNVERIFIED`이며 성공으로 주장하지 않는다. macOS 결정적 검증이 현재 로컬 게이트이고 Windows는 사용자가 최종 릴리스 후보에서 수행할 영수증이므로 `WINDOWS_RECEIPT_PENDING`을 유지한다.
+현재 공급자·모델 값은 설정 적재 기준선일 뿐이다. 실시간 응답, 도구 호출, 구조화 출력, 위임과 위 다섯 산출 후보 스킬은 `MODEL_ADMISSION_UNVERIFIED`이며 성공으로 주장하지 않는다. `LOCAL_IMPLEMENTATION_PASS`는 macOS의 결정적 핵심·설치·AS-IS 범위만 뜻한다. Windows 네이티브 테스트는 현재 환경에서 `WINDOWS_TEST_UNAVAILABLE`, 실제 호환성은 `WINDOWS_COMPATIBILITY_UNVERIFIED`, macOS 대체 검사는 `MACOS_STATIC_SUBSTITUTE_PASS`다.
 
 `opencode.json`의 `sensai-ollama` 공급자는 로컬 `http://localhost:11434/v1`만 사용한다. `apiKey` 값 `ollama`는 OpenAI 호환 공급자 형식을 만족시키는 비밀 아닌 고정 자리표시자이며 실제 자격 증명이 아니다. 환경 변수나 실제 비밀값으로 바꾸거나 다른 호스트와 결합하지 않는다.

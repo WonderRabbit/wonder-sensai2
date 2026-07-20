@@ -51,11 +51,43 @@ tooling_sha256_file() {
   return 0
 }
 
+tooling_source_leaf_regular() {
+  TOOLING_SOURCE_RELATIVE=$1
+  case "$TOOLING_SOURCE_RELATIVE" in
+    ''|/*|*//* ) return 1 ;;
+  esac
+  TOOLING_SOURCE_CURRENT=$SOURCE_ROOT
+  TOOLING_SOURCE_OLD_IFS=$IFS
+  IFS=/
+  set -f
+  set -- $TOOLING_SOURCE_RELATIVE
+  set +f
+  IFS=$TOOLING_SOURCE_OLD_IFS
+  test "$#" -gt 0 || return 1
+  while test "$#" -gt 0; do
+    TOOLING_SOURCE_COMPONENT=$1
+    shift
+    case "$TOOLING_SOURCE_COMPONENT" in
+      ''|.|..) return 1 ;;
+    esac
+    TOOLING_SOURCE_CURRENT=$TOOLING_SOURCE_CURRENT/$TOOLING_SOURCE_COMPONENT
+    test ! -L "$TOOLING_SOURCE_CURRENT" || return 1
+    if test "$#" -gt 0; then
+      test -d "$TOOLING_SOURCE_CURRENT" || return 1
+    else
+      test -f "$TOOLING_SOURCE_CURRENT" || return 1
+    fi
+  done
+  return 0
+}
+
 tooling_fingerprint_source() {
+  FINGERPRINT_NUL="$RUN_TMP/fingerprint-files.nul"
   FINGERPRINT_UNSORTED="$RUN_TMP/fingerprint-files-unsorted.txt"
   FINGERPRINT_FILES="$RUN_TMP/fingerprint-files.txt"
   FINGERPRINT_LINES="$RUN_TMP/fingerprint-lines.txt"
   UNTRACKED_FILE="$RUN_TMP/untracked.txt"
+  : >"$FINGERPRINT_NUL" || return 70
   : >"$FINGERPRINT_UNSORTED" || return 70
   : >"$FINGERPRINT_FILES" || return 70
   : >"$FINGERPRINT_LINES" || return 70
@@ -73,21 +105,45 @@ tooling_fingerprint_source() {
     tooling_wait_active_child || return 70
   fi
 
-  find "$SOURCE_ROOT" \
-    -path "$SOURCE_ROOT/.git" -prune -o \
-    -path "$SOURCE_ROOT/.omo/evidence" -prune -o \
-    -name '.DS_Store' -prune -o \
-    -type f -print >"$FINGERPRINT_UNSORTED" &
+  TOOLING_GIT_PROBE="$RUN_TMP/git-probe.txt"
+  git -C "$SOURCE_ROOT" rev-parse --is-inside-work-tree >"$TOOLING_GIT_PROBE" 2>/dev/null &
   ACTIVE_CHILD_PID=$!
-  tooling_wait_active_child || return 70
+  tooling_wait_active_child
+  TOOLING_GIT_PROBE_EXIT=$?
+  if test "$TOOLING_GIT_PROBE_EXIT" -eq 0; then
+    git -C "$SOURCE_ROOT" ls-files --cached --others --exclude-standard -z \
+      >"$FINGERPRINT_NUL" 2>/dev/null &
+    ACTIVE_CHILD_PID=$!
+    tooling_wait_active_child || return 70
+    perl -0ne '
+      chomp;
+      exit 1 if $_ eq q{} || m{^/} || m{(?:^|/)\.\.?(/|$)} || /[\x00-\x1f\x7f]/;
+      print $_, qq{\n};
+    ' "$FINGERPRINT_NUL" >"$FINGERPRINT_UNSORTED" || return 70
+  else
+    find "$SOURCE_ROOT" -path "$SOURCE_ROOT/.git" -prune -o -type f -print0 \
+      >"$FINGERPRINT_NUL" &
+    ACTIVE_CHILD_PID=$!
+    tooling_wait_active_child || return 70
+    TOOLING_SOURCE_ROOT=$SOURCE_ROOT perl -0ne '
+      chomp;
+      my $root = $ENV{TOOLING_SOURCE_ROOT};
+      exit 1 unless defined $root && index($_, $root . q{/}) == 0;
+      my $relative = substr($_, length($root) + 1);
+      exit 1 if $relative eq q{} || $relative =~ m{^/} ||
+        $relative =~ m{(?:^|/)\.\.?(/|$)} || $relative =~ /[\x00-\x1f\x7f]/;
+      print $relative, qq{\n};
+    ' "$FINGERPRINT_NUL" >"$FINGERPRINT_UNSORTED" || return 70
+  fi
 
   LC_ALL=C sort "$FINGERPRINT_UNSORTED" >"$FINGERPRINT_FILES" &
   ACTIVE_CHILD_PID=$!
   tooling_wait_active_child || return 70
 
   SOURCE_FILE_COUNT=0
-  while IFS= read -r TOOLING_FILE; do
-    TOOLING_RELATIVE=${TOOLING_FILE#"$SOURCE_ROOT"/}
+  while IFS= read -r TOOLING_RELATIVE; do
+    tooling_source_leaf_regular "$TOOLING_RELATIVE" || return 70
+    TOOLING_FILE=$SOURCE_ROOT/$TOOLING_RELATIVE
     tooling_sha256_file "$TOOLING_FILE" || return 70
     printf '%s\t%s\n' "$TOOLING_RELATIVE" "$TOOLING_SHA256" >>"$FINGERPRINT_LINES" || return 70
     SOURCE_FILE_COUNT=$((SOURCE_FILE_COUNT + 1))
@@ -96,11 +152,6 @@ tooling_fingerprint_source() {
   tooling_sha256_file "$FINGERPRINT_LINES" || return 70
   SOURCE_FINGERPRINT=$TOOLING_SHA256
 
-  TOOLING_GIT_PROBE="$RUN_TMP/git-probe.txt"
-  git -C "$SOURCE_ROOT" rev-parse --is-inside-work-tree >"$TOOLING_GIT_PROBE" 2>/dev/null &
-  ACTIVE_CHILD_PID=$!
-  tooling_wait_active_child
-  TOOLING_GIT_PROBE_EXIT=$?
   if test "$TOOLING_GIT_PROBE_EXIT" -eq 0; then
     git -C "$SOURCE_ROOT" rev-parse --verify HEAD >"$TOOLING_GIT_PROBE" 2>/dev/null &
     ACTIVE_CHILD_PID=$!
@@ -115,7 +166,7 @@ tooling_fingerprint_source() {
     git -C "$SOURCE_ROOT" status --short --untracked-files=all >"$TOOLING_GIT_STATUS_RAW" 2>/dev/null &
     ACTIVE_CHILD_PID=$!
     tooling_wait_active_child || return 70
-    awk 'substr($0,4) !~ /(^|\/)\.DS_Store$/' "$TOOLING_GIT_STATUS_RAW" >"$UNTRACKED_FILE" || return 70
+    cp "$TOOLING_GIT_STATUS_RAW" "$UNTRACKED_FILE" || return 70
     UNTRACKED_COUNT=0
     while IFS= read -r TOOLING_UNTRACKED_LINE; do
       test -n "$TOOLING_UNTRACKED_LINE" || continue

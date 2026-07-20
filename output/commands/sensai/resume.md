@@ -8,7 +8,7 @@ subtask: false
 
 `$ARGUMENTS`를 `<mission-id>` 형식의 데이터로만 해석하라. 사용자 문자열을 셸 문법으로 실행하지 마라. `<mission-id>`는 `^[a-z0-9]+(-[a-z0-9]+)*$`를 만족해야 하고 정규 미션 루트는 정확히 `docs/analysis/missions/<mission-id>/`다. 전역 progress, 다른 미션과 전역 OpenCode 설정은 읽거나 쓰지 마라.
 
-파일 기반 `CAS`와 원자적 `revision` 증가는 `./bin/sensai mission resume <mission-id> [<expected-revision> <expected-sha256>]`으로 수행한다. `CLI`의 `JSON projection`만 `todo` 복원 입력으로 사용하며 `exit` `65`, `69`, `75`를 모델 판단으로 성공 처리하지 않는다.
+파일 기반 `CAS`와 원자적 `revision` 증가는 `"$OPENCODE_CONFIG_DIR/bin/sensai" mission resume <mission-id> [<expected-revision> <expected-sha256>]`으로 수행한다. `OPENCODE_CONFIG_DIR`가 비어 있거나 절대 경로가 아니거나 설치된 `bin/sensai`가 정규 실행 파일이 아니면 중단한다. `CLI`의 `JSON projection`만 `todo` 복원 입력으로 사용하며 `exit` `65`, `69`, `75`를 모델 판단으로 성공 처리하지 않는다.
 
 ## 읽기와 검증 순서
 

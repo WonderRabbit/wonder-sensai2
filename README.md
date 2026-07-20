@@ -2,7 +2,7 @@
 
 `wonder-sensai`는 legacy codebase를 AS-IS 분석하고 TO-BE 변경을 설계하는 OpenCode 하네스다. 모델의 문장을 사실로 채택하지 않고, 결정적 CLI·schema·validator가 확인한 `path:line` 근거와 안정 ID를 canonical trace에 남긴다.
 
-현재 checkout은 **RUNTIME_CLI + FILESYSTEM_PACKAGING** 단계다. 공개 계약, fail-closed test runner, root fixture corpus, canonical `output/` runtime, 정확히 2 agent·9 command·15 skill, schema·recipe, repository-side `bin/sensai`와 36-leaf root manifest가 있다. disposable target의 stage/install 파일시스템 계약은 구현됐지만 OpenCode hermetic semantic load는 아직 주장하지 않는다.
+현재 checkout은 **RUNTIME_CLI + FILESYSTEM_PACKAGING + HERMETIC_LOAD** 단계다. 공개 계약, fail-closed test runner, root fixture corpus, canonical `output/` runtime, 정확히 2 agent·9 command·15 skill, schema·recipe, repository-side와 설치용 `bin/sensai`를 결합한 37-leaf root manifest가 있다. disposable target의 stage/install 계약과 격리한 macOS OpenCode `1.18.3` semantic load를 검증한다.
 
 제품 경계는 [제품 계약](docs/PROD.md), task 배치는 [R4 mapping](docs/r4-mapping.md), 충돌 해소는 [contract freeze](docs/harness/contract-freeze.md), runtime·검증·release 상태는 [runtime](docs/harness/runtime-contract.md), [verification](docs/harness/verification-contract.md), [release](docs/harness/release-contract.md), [implementation status](docs/harness/implementation-status.md)가 소유한다. `.gitignore` 대상인 `plan/prd/`의 정확히 27개 문서는 planning input이며 runtime authority가 아니다.
 
@@ -48,7 +48,7 @@
 
 CLI 종료 코드는 `0` 성공, `64` 사용법 오류, `65` 입력·설정·제품 식별 오류, `69` 필수 도구 또는 transport 사용 불가, `75` lock·revision·hash 충돌이다. 이는 테스트 러너의 assertion `1`과 infrastructure `70` 계약과 별개다.
 
-`stage`와 `install`은 정렬·중복 없음·정규화된 36개 `manifest.txt` leaf만 `output/` 접두사 없이 부재 중인 절대 경로에 배치한다. source와 stage의 SHA-256이 모두 같아야 하며, 동일한 parent filesystem의 sibling 임시 디렉터리에서 완성한 뒤 한 번의 rename으로 공개한다. 대상이 이미 있으면 merge·overwrite·backup 없이 exit `73`으로 거부하고 기존 대상은 바꾸지 않는다. 이 검증은 파일시스템 topology만 증명하며, 격리된 OpenCode semantic load는 별도 단계다.
+`stage`와 `install`은 정렬·중복 없음·정규화된 37개 `manifest.txt` leaf를 부재 중인 절대 경로에 배치한다. 36개 canonical `output/` leaf는 접두사를 제거하고, repository-side `bin/sensai`는 설치 root의 실행 가능한 `bin/sensai`로 byte-exact 복사한다. source와 stage의 SHA-256이 모두 같아야 하며, 동일한 parent filesystem의 sibling 임시 디렉터리에서 완성한 뒤 한 번의 rename으로 공개한다. 대상이 이미 있으면 merge·overwrite·backup 없이 exit `73`으로 거부하고 기존 대상은 바꾸지 않는다.
 
 ## Command catalog 목표
 
@@ -118,6 +118,8 @@ macOS가 deterministic 구현과 QA의 현재 gate다. schema, jq recipe, fixtur
 ## 현재 검증
 
 ```sh
+./tests/test.sh all
+./tests/test.sh expect-fail misleading-success-output
 ./tests/test.sh self
 ./tests/test.sh docs
 ./tests/test.sh catalog-oracle
@@ -143,11 +145,17 @@ macOS가 deterministic 구현과 QA의 현재 gate다. schema, jq recipe, fixtur
 ./tests/test.sh packaging
 ./tests/test.sh expect-fail existing-install-target
 ./tests/test.sh core-readiness
+./tests/test.sh continuity
+./tests/test.sh expect-fail concurrent-mission-writer
+./tests/test.sh opencode-load
+./tests/test.sh expect-fail inherited-config-sentinel
 ```
 
 - `self`: fail-closed runner, semantic failure, infrastructure failure, signal cleanup, unborn fingerprint를 확인한다.
+- `all`: `tests/contracts/release-preflight.json`의 결정적 selector 53개를 각각 정확히 한 번 실행하고 각 current-fingerprint receipt를 다시 검증한다. 모델·TUI·live delegation·Windows 상태는 pass 수와 분리한다.
+- `expect-fail misleading-success-output`: 출력에 `PASS`가 있어도 실제 exit와 assertion receipt가 실패이면 release preflight가 거부하는 경우만 인정한다.
 - `docs`: Markdown 링크, exact 27 PRD, alias/catalog/model/version/category/platform/status 계약과 대립 mutation을 확인한다.
-- `catalog-oracle`: `output/` 상대 literal 2 agents/9 commands/15 skills/2 schemas/5 recipes와 36-leaf manifest target, root/runtime 분리, 27 PRD topology parity를 확인한다.
+- `catalog-oracle`: `output/` 상대 literal 2 agents/9 commands/15 skills/2 schemas/5 recipes와 설치 CLI를 합친 37-leaf manifest target, root/runtime 분리, 27 PRD topology parity를 확인한다.
 - `schema-trace`: trace 2.0 schema, 고정 golden, 상태·결합 관계와 단일 필드 mutation의 jq 동등성을 확인한다.
 - `expect-fail trace-dangling-id`: 격리한 유효 원장에 dangling evidence ID 하나를 주입하고 `trace.reference_integrity` 실패만 인정한다.
 - `recipe-trace`: trace의 전역 ID·직접 근거·exact join·mapping·binding, glossary 근거, 1.0→2.0 보존과 재실행 안정성을 확인한다.
@@ -165,11 +173,14 @@ macOS가 deterministic 구현과 QA의 현재 gate다. schema, jq recipe, fixtur
 - `expect-fail forbidden-mcp-config`: 격리한 config에 금지된 `mcp` key 하나를 추가하고 `permissions.forbidden_extension_config` 실패만 인정한다.
 - `doctor`: 실제 도구 제품·OpenCode 1.18.3, 모델의 `READY/UNVERIFIED/UNVERIFIED`, 미션 init/status/checkpoint/resume의 path·schema·CAS·원자성과 종료 코드를 확인한다.
 - `expect-fail wrong-yq-product`: 격리 PATH의 Python 계열 yq를 Mike Farah 제품으로 오인하지 않고 exit `65`와 `tool.identity_mismatch`로 거부하는 경우만 인정한다.
-- `packaging`: root manifest와 T05 oracle의 36-leaf exact-set, source/stage hash, 접두사 없는 topology, runtime AGENTS 포함, repository-side 자산 제외, 동일 parent 원자 이동과 source 불변을 확인한다.
+- `packaging`: root manifest의 37-leaf exact-set, source/stage hash, 설치 `bin/sensai`의 byte·실행 mode와 실제 mission init/status, 동일 parent 원자 이동과 source 불변을 확인한다.
 - `expect-fail existing-install-target`: 기존 대상에 대한 exit `73`과 byte-exact 보존만 성공적인 거부로 인정한다.
 - `expect-fail stale-catalog-doc`: isolated source copy에 stale catalog 항목을 넣고 named semantic assertion failure를 확인한다.
 - `core-readiness`: runtime AGENTS/config/toolchain, 2/9/15 payload, schema/recipe, fixture, root manifest와 CLI가 모두 존재하는지 확인한다.
+- `continuity`: 격리 mission 저장소에서 초기화, 체크포인트, 중단, 새 프로세스 재개, 단일 작성자와 F0/F3/F5 hard gate를 검증한다.
+- `opencode-load`: 37-leaf payload를 disposable config에 stage하고 격리한 `HOME`·XDG·`TMPDIR`·중립 CWD에서 OpenCode `1.18.3` debug load를 두 번 실행해 설치 CLI, 2 agent·9 nested command·15 skill, config binding, idempotence, source·실제 global 불변과 알려진 초기화 파일만 확인한다. full resolved config와 모델 응답은 저장하지 않는다.
+- `expect-fail inherited-config-sentinel`: disposable global config에 유효한 sentinel과 추가 command를 주입하고 merged overlay가 `opencode-load.inherited_sentinel`로 거부되는 경우만 인정한다.
 
 증거는 명시한 `--evidence` 디렉터리에 source fingerprint, assertion, command exit, reason, cleanup과 함께 기록한다. exit `64`는 usage, `70`은 test infrastructure 문제이며 의도한 RED로 인정하지 않는다.
 
-현재 상태는 `LOCAL_IMPLEMENTATION=RUNTIME_CLI_FILESYSTEM_PACKAGING`, `MODEL_ADMISSION=UNVERIFIED`, `WINDOWS_RECEIPT=PENDING_USER_RECEIPT`다. 36-leaf manifest와 disposable stage/install은 구현됐지만 full payload semantic load, live model, TUI/delegation, Windows 또는 cross-platform 성공은 아직 주장하지 않는다.
+현재 terminal status는 `LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / MACOS_STATIC_SUBSTITUTE_PASS`다. macOS 대체 검사는 현재 payload·설정·경로·quoting·checksum의 host-side 결정적 범위만 뜻하며, Windows 네이티브 실행이나 호환성 성공을 주장하지 않는다.

@@ -155,7 +155,18 @@ def transition_issues($envelope):
       fingerprint_matches($envelope.current; $envelope.observed_fingerprints; "toolchain"))
   + issue("progress.transition.approval_history";
       all($envelope.previous.approvals[]?; . as $approval
-        | any($envelope.current.approvals[]?; . == $approval)))
+        | if $approval.verdict == "accepted" then
+            any($envelope.current.approvals[]?; . == $approval)
+          else
+            any($envelope.current.approvals[]?;
+              .gate == $approval.gate
+              and (. == $approval or
+                (.verdict == "accepted"
+                  and .actor_role == "human" and .source == "elicited"
+                  and .recorded_at > $approval.recorded_at)))
+          end))
+  + issue("progress.transition.target";
+      $envelope.current.provenance[0] == $envelope.previous.provenance[0])
   + issue("progress.transition.timestamp";
       $envelope.current.updated_at > $envelope.previous.updated_at)
   + issue("progress.transition.hard_gate";

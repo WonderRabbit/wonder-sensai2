@@ -18,6 +18,7 @@ packaging_adversarial_surface_hash() {
     printf '%s  %s\n' "$TOOLING_SHA256" "$PA_HASH_FIXED" >>"$PA_HASH_DEST.lines" || return 70
   done
   while IFS= read -r PA_HASH_ENTRY; do
+    test "$PA_HASH_ENTRY" = bin/sensai && continue
     tooling_sha256_file "$PA_HASH_ROOT/output/$PA_HASH_ENTRY" || return 70
     printf '%s  output/%s\n' "$TOOLING_SHA256" "$PA_HASH_ENTRY" >>"$PA_HASH_DEST.lines" || return 70
   done <"$PA_HASH_ROOT/manifest.txt"
@@ -69,8 +70,12 @@ packaging_adversarial_run_failure() {
   PA_RUN_EXPECT_REASON=$5
   PA_RUN_OUT=$RUN_TMP/pa-$PA_RUN_ID.out
   PA_RUN_ERR=$RUN_TMP/pa-$PA_RUN_ID.err
+  PA_RUN_CLI=$PA_RUN_ROOT/bin/sensai
+  if test "$PA_RUN_ID" = source_cli_missing; then
+    PA_RUN_CLI=$PA_RUN_ROOT/bin/sensai-runner
+  fi
   set +e
-  "$PA_RUN_ROOT/bin/sensai" stage "$PA_RUN_TARGET" >"$PA_RUN_OUT" 2>"$PA_RUN_ERR"
+  "$PA_RUN_CLI" stage "$PA_RUN_TARGET" >"$PA_RUN_OUT" 2>"$PA_RUN_ERR"
   PA_RUN_RC=$?
   PA_RUN_REASON=$(packaging_adversarial_reason "$PA_RUN_ERR") || return 70
   evidence_log_command "packaging-adversarial-$PA_RUN_ID" \
@@ -194,13 +199,17 @@ case_packaging_adversarial() {
       "$PA_BASE/manifest-$PA_MANIFEST_CASE-target" 65 package.manifest_invalid || return 70
   done
 
-  for PA_LEAF_CASE in missing fifo directory symlink broken_symlink ancestor_symlink unmanaged; do
+  for PA_LEAF_CASE in missing cli_missing fifo directory symlink broken_symlink ancestor_symlink unmanaged; do
     PA_ROOT=$PA_BASE/leaf-$PA_LEAF_CASE-source
     packaging_adversarial_clone_source "$PA_ROOT" || return 70
     PA_EXPECT_REASON=package.source_exact_set_mismatch
     case "$PA_LEAF_CASE" in
       missing)
         rm "$PA_ROOT/output/AGENTS.md" || return 70
+        ;;
+      cli_missing)
+        mv "$PA_ROOT/bin/sensai" "$PA_ROOT/bin/sensai-runner" || return 70
+        PA_EXPECT_REASON=package.source_leaf_invalid
         ;;
       fifo)
         rm "$PA_ROOT/output/AGENTS.md" && mkfifo "$PA_ROOT/output/AGENTS.md" || return 70
@@ -380,9 +389,9 @@ case_packaging_adversarial() {
 
   jq -s '.' "$PA_MATRIX_JSONL" >"$EVIDENCE_DIR/attack-matrix.json" || return 70
   PA_MATRIX_COUNT=$(jq 'length' "$EVIDENCE_DIR/attack-matrix.json") || return 70
-  assert_eq packaging-adversarial.attack_count 21 "$PA_MATRIX_COUNT" || true
+  assert_eq packaging-adversarial.attack_count 22 "$PA_MATRIX_COUNT" || true
   assert_jq packaging-adversarial.attack_matrix_all_pass \
-    'length == 21 and all(.[]; .pass == true)' "$EVIDENCE_DIR/attack-matrix.json" || true
+    'length == 22 and all(.[]; .pass == true)' "$EVIDENCE_DIR/attack-matrix.json" || true
   jq -n --arg source_before "$PA_SOURCE_BEFORE" --arg source_after "$PA_SOURCE_AFTER" \
     --arg global_path "$PA_GLOBAL_FILE" --arg global_before "$PA_GLOBAL_BEFORE" --arg global_after "$PA_GLOBAL_AFTER" \
     --arg codegraph_path "$PA_CODEGRAPH_TARGET/source.json" --arg codegraph_before "$PA_CODEGRAPH_BEFORE" --arg codegraph_after "$PA_CODEGRAPH_AFTER" \
