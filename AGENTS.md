@@ -13,8 +13,8 @@ jq empty output/opencode.json
 SENSAI_GO="${SENSAI_GO:-go}" # system 또는 task-local exact Go 1.26.5
 test "$("$SENSAI_GO" version | awk '{print $3}')" = go1.26.5
 mkdir -p bin
-env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$SENSAI_GO" build -trimpath -o bin/sensai ./cmd/sensai
-env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 "$SENSAI_GO" build -trimpath -o bin/sensai.exe ./cmd/sensai
+env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$SENSAI_GO" build -buildvcs=false -trimpath -o bin/sensai ./cmd/sensai
+env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 "$SENSAI_GO" build -buildvcs=false -trimpath -o bin/sensai.exe ./cmd/sensai
 ./tests/test.sh self
 ./tests/test.sh docs
 ./tests/test.sh fixtures

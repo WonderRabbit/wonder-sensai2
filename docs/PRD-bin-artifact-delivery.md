@@ -44,8 +44,8 @@ build prerequisite는 exact Go `1.26.5`다. 자동 toolchain download나 다른 
 SENSAI_GO="${SENSAI_GO:-go}"
 test "$("$SENSAI_GO" version | awk '{print $3}')" = go1.26.5
 mkdir -p bin
-env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$SENSAI_GO" build -trimpath -o bin/sensai ./cmd/sensai
-env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 "$SENSAI_GO" build -trimpath -o bin/sensai.exe ./cmd/sensai
+env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$SENSAI_GO" build -buildvcs=false -trimpath -o bin/sensai ./cmd/sensai
+env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 "$SENSAI_GO" build -buildvcs=false -trimpath -o bin/sensai.exe ./cmd/sensai
 ```
 
 빌드 입력은 같은 checked-out source revision이어야 한다. macOS 파일에는 `.exe` suffix를 붙이지 않고 Windows 파일에는 반드시 `.exe` suffix를 둔다.
@@ -76,6 +76,8 @@ git diff --check
 ```
 
 기대 observable은 두 파일이 non-empty regular file이고, `bin/sensai`가 Darwin arm64 executable, `bin/sensai.exe`가 PE32+ x86-64 executable이며, 두 module metadata가 현재 module/source와 exact Go `1.26.5`를 가리키는 것이다. macOS host에서는 `bin/sensai`의 direct `help`만 smoke한다. Windows artifact는 metadata와 file format까지만 확인하며 실행 성공으로 해석하지 않는다. 무관한 selector, full suite, 반복 실행은 이 artifact 전달 계획의 최소 예산 밖이다.
+
+`-buildvcs=false`는 commit에 포함되는 binary가 build 이전 commit이나 dirty worktree를 embedded provenance로 잘못 주장하지 않게 한다. 대신 build 직전 clean `HEAD`와 두 artifact hash를 evidence에 함께 기록해 source revision을 고정한다.
 
 ## Windows 증명 경계
 

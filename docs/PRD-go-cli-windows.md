@@ -72,8 +72,8 @@ mission resume <mission-id> [<expected-revision> <expected-sha256>]
 canonical tracked output은 각각 `bin/sensai`, `bin/sensai.exe`다. 두 target을 같은 source revision과 exact Go `1.26.5`로 함께 재생성한다.
 
 ```sh
-env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -o bin/sensai ./cmd/sensai
-env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o bin/sensai.exe ./cmd/sensai
+env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -buildvcs=false -trimpath -o bin/sensai ./cmd/sensai
+env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -o bin/sensai.exe ./cmd/sensai
 ```
 
 ## 플랫폼 경로와 link/reparse 정책
