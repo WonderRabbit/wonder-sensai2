@@ -24,16 +24,16 @@ Windows는 local 구현의 H1/H2 선행 조건이 아니다. macOS에서 runtime
 ## 평가 가정
 
 - macOS deterministic 구현과 QA는 Windows 호스트 없이 순서대로 계속한다.
-- Windows 사용자는 local release 후보와 native PowerShell kit가 준비된 뒤 최종 receipt만 실행한다.
+- Windows 사용자는 local release 후보의 `sensai.exe`를 직접 전달받아 최종 receipt를 실행한다. 실제 Windows 실행 전 상태는 `WINDOWS_COMPATIBILITY_UNVERIFIED`다.
 - OpenCode 기준 버전은 exact `1.18.3`이며, 다른 버전은 별도 drift 판정 대상이다.
 - lead `zai/glm-5.2`와 peer `sensai-ollama/qwen3.5:9b`는 discovery/load baseline일 뿐 live model admission이 아니다.
 - credential과 모델 비용 권한은 현재 범위에 없으며 live call을 하지 않는다.
 - `output/`은 36개 config leaf의 packaging source로만 사용하고 runtime asset fallback으로 쓰지 않는다.
-- installer는 existing physical `$HOME/.config/opencode`의 managed leaf만 다루고 unmanaged content를 보존하며 CLI를 `$HOME/.local/bin/sensai`에 둔다.
+- installer는 platform home의 existing physical `.config/opencode`의 managed leaf만 다루고 unmanaged content를 보존하며 CLI를 Unix `$HOME/.local/bin/sensai` 또는 Windows `%USERPROFILE%\.local\bin\sensai.exe`에 둔다.
 - project `.sensai/{schemas,recipes}`는 파일별 override이고 fallback은 해당 project 파일이 absent일 때만 허용한다.
 - `OPENCODE_CONFIG_DIR`는 merged overlay이며 isolation으로 간주하지 않는다.
 - root `AGENTS.md`는 contributor/fixture 관리 계약이며 T05 승인 변경 이후 새 hash로 보호한다. runtime 계약은 `output/AGENTS.md`이고 staged 자동 로드에만 의존하지 않는다.
-- implementation은 shell과 독립 CLI로 한정하고 Node/TS/Go/plugin/MCP/custom tool/Yeoman을 추가하지 않는다.
+- implementation은 stdlib-only Go CLI와 독립 검증 도구로 한정하고 Node/TS/plugin/MCP/custom tool/Yeoman을 추가하지 않는다.
 - output의 사람용 문구와 표시명은 한국어로 작성하고 기계 key/schema field/ID/path/command/skill/enum/reason code/문법은 원형을 보존한다.
 - commit, tag, push, publish 없이 unborn/untracked workspace receipt로 진행한다.
 
@@ -50,7 +50,7 @@ Windows는 local 구현의 H1/H2 선행 조건이 아니다. macOS에서 runtime
 - baseline config는 처음 root에서 `output/opencode.json`으로 byte-identical 이동한 뒤 사람용 provider/model 표시명만 한국어화했고, 기계 필드는 exact 검증으로 고정했으며 root duplicate는 제거됐다.
 - `output/AGENTS.md`와 output 상대 36-leaf manifest exact-set, agent/command/skill/schema/recipe/toolchain leaf가 구현됐다.
 - 기존 global config에는 absent managed leaf만 설치하고 byte-equal regular leaf는 no-op이며 differing/symlink/directory 충돌은 pre-write 거부한다. unmanaged content와 preexisting equal leaf는 보존한다.
-- config 밖 `$HOME/.local/bin/sensai`와 absolute/PATH/source 실행 해석, project `.sensai` file override, absent-only global fallback, present-invalid fail-closed가 구현됐다.
+- config 밖 platform별 `sensai`/`sensai.exe`와 absolute/PATH/source 실행 해석, project `.sensai` file override, absent-only global fallback, present-invalid fail-closed가 구현됐다.
 - output의 한 단어·짧은 문장·제목·목록 영어 자연어 주입을 거부하고 형식화된 기계 식별자·코드는 허용하는 로컬 언어 oracle을 수리했다. 독립 재검증은 `PENDING`이다.
 - macOS local gate와 Windows final receipt가 분리됐다.
 - `AGENTS.md` pre-edit SHA-256은 `64d0ffefedf2df07095a3316ebf48586366a4565cf1d3f8bed596e054c3c4866`으로 기록됐다.
@@ -58,7 +58,7 @@ Windows는 local 구현의 H1/H2 선행 조건이 아니다. macOS에서 runtime
 ### 아직 없음
 
 - live model response/tool-use/TUI/delegation 증거
-- Windows receipt kit와 실제 사용자 receipt
+- Windows에 직접 전달한 `sensai.exe`의 실제 사용자 receipt
 
 ## 핵심 리스크
 
@@ -69,7 +69,7 @@ Windows는 local 구현의 H1/H2 선행 조건이 아니다. macOS에서 runtime
 | R-03 | 27개 PRD 범위 팽창 | 높음 | 높음 | analysis, delivery, continuity, packaging이 한 제품에 있다. | T01-T30 strict serial과 MVP 금지선 | 각 task 증거가 현재 fingerprint에 연속 결합 |
 | R-04 | config merge를 isolation으로 오인 | 높음 | 치명적 | `OPENCODE_CONFIG_DIR`는 다른 config 층과 merge될 수 있다. | disposable HOME/XDG, neutral CWD, inherited sentinel | exact 2/9/15 semantic projection, inherited/duplicate 0 |
 | R-05 | sLLM tool-use와 장기 흐름 미입학 | 높음 | 치명적 | 모델 관련 값은 전부 discovery/load 또는 predicted다. | deterministic core 먼저, live admission 별도 | tool-call 인자·근거·stream·structured output 기준 통과 |
-| R-06 | Windows platform drift | 중간 | 높음 | quoting, NUL, Chromium, PowerShell 안전성은 미확인이다. | local 구현 후 native kit + 최종 사용자 receipt | current release hash의 `WINDOWS_RECEIPT_ACCEPTED` |
+| R-06 | Windows platform drift | 중간 | 높음 | quoting, NUL, filesystem·reparse point와 terminal 의미는 미확인이다. | current release `sensai.exe` 직접 전달 + 최종 사용자 receipt | current release hash의 `WINDOWS_RECEIPT_ACCEPTED` |
 | R-07 | oracle/golden 범위 drift | 낮음 | 높음 | fixture, schema/recipe/permission/projection oracle이 많아 release selector 누락 위험이 있다. | release contract exact selector와 receipt audit | nonzero exact case count와 current fingerprint |
 | R-08 | permission을 sandbox로 오인 | 중간 | 치명적 | prompt/permission만으로 OS secret·외부 경로를 강제할 수 없다. | disposable filesystem/HOME/network와 adversarial case | secret/external/write bypass 0, 전후 hash 동일 |
 | R-09 | mission single-writer/continuity 회귀 | 낮음 | 높음 | progress schema, lock, atomic rename은 구현됐지만 runtime asset drift가 resume fingerprint를 바꿀 수 있다. | revision/hash와 asset provenance precondition | interrupt/resume/stale/corrupt/double-writer case 통과 |
@@ -99,7 +99,7 @@ Windows는 local 구현의 H1/H2 선행 조건이 아니다. macOS에서 runtime
 
 - deterministic validator 없이 모델 판정만으로 성공을 선언해야 한다.
 - managed 범위 밖의 전역 설정 overwrite, project-local runtime 복사본 또는 runtime `output/` fallback이 필수라고 입증된다.
-- Node/TS/Go/plugin/MCP/custom tool/Yeoman이 실패 fixture 없이 필수로 요구된다.
+- Node/TS/plugin/MCP/custom tool/Yeoman이 실패 fixture 없이 필수로 요구되거나 third-party Go module이 도입된다.
 - single-writer 또는 atomic/precondition 계약 없이 동일 mission 병렬 쓰기가 요구된다.
 - live credential, 비용, Windows 실행을 로컬 구현의 선행 조건으로 되돌리려 한다.
 

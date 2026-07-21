@@ -7,12 +7,13 @@
 | 축 | 판정자 | 현재 플랫폼 |
 | --- | --- | --- |
 | source contract | 파일 exact-set, parser, link 검사 | macOS |
-| deterministic behavior | shell, jq, schema, fixture, mutation | macOS |
+| deterministic behavior | Go CLI, jq, schema, fixture, mutation | macOS |
 | OpenCode load | disposable HOME/XDG/stage의 safe projection | macOS, `1.18.3` |
 | live model | 명시 승인된 모델 실험 receipt | `UNVERIFIED` |
 | TUI/delegation | 실제 non-model 또는 승인된 session receipt | `UNVERIFIED` |
 | Windows native | 현재 환경에 없는 Windows 호스트에서의 실제 실행 | `TEST_UNAVAILABLE` |
 | macOS substitute | payload·설정·경로·quoting·checksum의 host-side 결정적 검사 | `PASS` |
+| Windows artifact | `CGO_ENABLED=0` cross-build, module metadata, PE32+ x86-64 형식 | host-side build only |
 | Windows compatibility | 실제 Windows 실행으로만 승인 | `UNVERIFIED` |
 
 macOS deterministic PASS는 Windows 영수증 없이 진행하고 완성할 수 있다. Windows는 H1/H2의 선행 blocker가 아니며 final user receipt만 담당한다. Windows receipt가 없다는 이유로 local implementation을 멈추지 않지만 cross-platform PASS를 주장하지도 않는다.
@@ -34,9 +35,10 @@ macOS deterministic PASS는 Windows 영수증 없이 진행하고 완성할 수 
 `LOCAL_IMPLEMENTATION_PASS`는 다음이 모두 현재 workspace fingerprint에서 통과할 때만 허용한다.
 
 - source-owned Markdown과 상대 링크
+- stdlib-only module source, exact Go `1.26.5`, `darwin/arm64` `sensai`와 `windows/amd64` `sensai.exe` build identity
 - `output/` relative literal agent 2 / command 9 / skill 15 exact-set와 36-leaf managed config manifest
 - 기존 global config의 absent install, byte-equal no-op, differing/symlink/directory pre-write conflict와 unmanaged 보존
-- config 밖 `$HOME/.local/bin/sensai` exact executable, absolute/PATH/source 호출 동등성
+- config 밖 platform별 installed Go executable, absolute/PATH/source 호출 동등성과 link/reparse 거부
 - project `.sensai/{schemas,recipes}`의 file-level 우선순위, absent-only global fallback, present-invalid fail-closed와 provenance
 - output 사람용 문구·표시명 한국어와 기계 식별자·문법 원형 보존
 - trace/progress schema와 valid/invalid fixture
@@ -65,7 +67,7 @@ macOS deterministic PASS는 Windows 영수증 없이 진행하고 완성할 수 
 
 ## manual QA
 
-문서 task는 실제 파일 inventory와 sentinel 검색을 그대로 실행한다. runtime task는 CLI, isolated load, render, mission state 같은 사용 표면을 직접 구동한다. 성공 기준은 exit 0뿐 아니라 예상 파일·내용·hash·부작용·cleanup까지 포함한다.
+문서 task는 실제 파일 inventory와 sentinel 검색을 그대로 실행한다. runtime task는 build한 Go CLI, isolated load, render, mission state 같은 사용 표면을 직접 구동한다. 성공 기준은 exit 0뿐 아니라 예상 파일·내용·hash·부작용·cleanup까지 포함한다. Windows cross-build나 macOS smoke를 Windows direct-CLI 또는 OpenCode slash-command 실행 증거로 승격하지 않는다.
 
 ## 외부 상태 표기
 

@@ -2,15 +2,15 @@
 
 `wonder-sensai`는 legacy codebase를 AS-IS 분석하고 TO-BE 변경을 설계하는 OpenCode 하네스다. 모델의 문장을 사실로 채택하지 않고, 결정적 CLI·schema·validator가 확인한 `path:line` 근거와 안정 ID를 canonical trace에 남긴다.
 
-현재 checkout은 **RUNTIME_CLI + GLOBAL_INSTALLER + HERMETIC_LOAD** 단계다. 공개 계약, fail-closed test runner, root fixture corpus, packaging source인 `output/`, 정확히 2 agent·9 command·15 skill, schema·recipe와 self-contained `bin/sensai`가 있다. `stage`의 36개 config payload, 기존 전역 OpenCode config에 합류하는 `install`, 외부 CLI, 격리한 macOS OpenCode `1.18.3` semantic load를 검증한다.
+현재 checkout은 **RUNTIME_CLI + GLOBAL_INSTALLER + HERMETIC_LOAD** 단계다. 공개 계약, fail-closed test runner, root fixture corpus, packaging source인 `output/`, 정확히 2 agent·9 command·15 skill, schema·recipe와 stdlib-only Go CLI source `cmd/sensai/`가 있다. `stage`의 36개 config payload, 기존 전역 OpenCode config에 합류하는 `install`, 외부 CLI, 격리한 macOS OpenCode `1.18.3` semantic load를 검증한다.
 
-제품 경계는 [제품 계약](docs/PROD.md), task 배치는 [R4 mapping](docs/r4-mapping.md), 충돌 해소는 [contract freeze](docs/harness/contract-freeze.md), runtime·검증·release 상태는 [runtime](docs/harness/runtime-contract.md), [verification](docs/harness/verification-contract.md), [release](docs/harness/release-contract.md), [implementation status](docs/harness/implementation-status.md)가 소유한다. `.gitignore` 대상인 `plan/prd/`의 정확히 27개 문서는 planning input이며 runtime authority가 아니다.
+제품 경계는 [제품 계약](docs/PROD.md), Go CLI와 Windows 전달 경계는 [Go CLI Windows PRD](docs/PRD-go-cli-windows.md), tracked binary의 rebuild·commit·push 계획은 [bin artifact 전달 PRD](docs/PRD-bin-artifact-delivery.md), task 배치는 [R4 mapping](docs/r4-mapping.md), 충돌 해소는 [contract freeze](docs/harness/contract-freeze.md), runtime·검증·release 상태는 [runtime](docs/harness/runtime-contract.md), [verification](docs/harness/verification-contract.md), [release](docs/harness/release-contract.md), [implementation status](docs/harness/implementation-status.md)가 소유한다. `.gitignore` 대상인 `plan/prd/`의 정확히 27개 문서는 planning input이며 runtime authority가 아니다.
 
 ## 동결된 실행 경계
 
 - packaging source: `output/AGENTS.md`, `output/opencode.json`, `output/agents/`, `output/commands/`, `output/skills/`, `output/schemas/`, `output/recipes/`; `output/`이 유일한 canonical packaging source root이며 실행 중 탐색 경로가 아니다.
-- repository-side: root `fixtures/`, `tests/`, `bin/`, `docs/`, `manifest.txt`; manifest는 `output/` 기준 36개 config leaf만 나열하고 CLI는 별도 관리한다.
-- installed topology: 기존 물리 디렉터리 `$HOME/.config/opencode` 아래 managed config leaf 36개와 실행 파일 `$HOME/.local/bin/sensai` 하나다.
+- repository-side: root `fixtures/`, `tests/`, `cmd/sensai/`, `go.mod`, tracked `bin/sensai`, tracked `bin/sensai.exe`, `docs/`, `manifest.txt`; manifest는 `output/` 기준 36개 config leaf만 나열하고 CLI artifact는 별도 관리한다.
+- installed topology: Unix는 기존 물리 디렉터리 `$HOME/.config/opencode` 아래 managed config leaf 36개와 `$HOME/.local/bin/sensai`, Windows direct CLI는 `%USERPROFILE%\.config\opencode`와 `%USERPROFILE%\.local\bin\sensai.exe`다.
 - payload topology target: exact 2 agents / 9 nested `sensai/*` commands / 15 skills
 - OpenCode load baseline: exact `1.18.3`
 - mission root: `docs/analysis/missions/<mission-id>/`
@@ -19,7 +19,7 @@
 - root `AGENTS.md`: contributor-only이며 fixture 계약을 설명한다. runtime prompt는 `output/AGENTS.md`이고 자동 로드를 가정하지 않는다.
 - output language: 사람이 읽는 제목·설명·지침·표시명은 한국어로 작성하고, 기계 key/schema field/ID/path/command/skill/enum/reason code/문법은 정확히 보존한다.
 
-`OPENCODE_CONFIG_DIR`는 다른 설정과 합쳐지는 overlay이므로 설정 격리를 보장하지 않는다. load 검증은 disposable stage, `HOME`, XDG 경로와 neutral working directory에서만 수행한다. 설치 위치는 이 변수와 무관하게 `$HOME/.config/opencode`와 `$HOME/.local/bin/sensai`로 고정된다.
+`OPENCODE_CONFIG_DIR`는 다른 설정과 합쳐지는 overlay이므로 설정 격리를 보장하지 않는다. load 검증은 disposable stage, `HOME`, XDG 경로와 neutral working directory에서만 수행한다. 설치 위치는 이 변수와 무관하게 Unix `$HOME/.config/opencode`와 `$HOME/.local/bin/sensai`, Windows `%USERPROFILE%\.config\opencode`와 `%USERPROFILE%\.local\bin\sensai.exe`로 고정된다.
 
 ## 모델과 agent 계약
 
@@ -44,7 +44,7 @@ $HOME/.local/bin/sensai mission init sample-mission fixtures/inputs/legacy-react
 $HOME/.local/bin/sensai mission status sample-mission
 ```
 
-`$HOME/.local/bin`이 `PATH`에 있으면 설치 뒤 `sensai doctor models`처럼 호출해도 같다. `PATH`가 가리키는 실제 실행 파일은 정확히 `$HOME/.local/bin/sensai`여야 하며 symlink는 거부한다. source checkout에서는 `./bin/sensai` 또는 그 절대 경로를 사용할 수 있다. source 호출과 installed 호출의 mission asset 선택은 같고, `stage`와 `install`만 source checkout 전용이다.
+빌드 prerequisite는 정확히 Go `1.26.5`이며 `go.mod`의 directive는 `go 1.26.0`이다. `$HOME/.local/bin`이 `PATH`에 있으면 설치 뒤 `sensai doctor models`처럼 호출해도 같다. `PATH`가 가리키는 실제 실행 파일은 정확히 `$HOME/.local/bin/sensai`여야 하며 symlink는 거부한다. source checkout에서는 tracked `./bin/sensai` 또는 그 절대 경로를 사용할 수 있다. source 호출과 installed 호출의 mission asset 선택은 같고, `stage`와 `install`만 source checkout 전용이다. 전달 artifact는 tracked `bin/sensai`와 `bin/sensai.exe`이고 semantic authority는 `cmd/sensai/`와 `go.mod`다. `dist/`는 ignored·noncanonical local scratch일 뿐 최종 전달 위치가 아니다. Windows OpenCode slash-command 연동은 별도 범위다.
 
 `doctor tools`는 설치를 수행하지 않고 `opencode`, `fd`, `rg`, `sg`, `jq`, `yq`, `mdq`, `mmdc`의 실행 파일과 제품 식별을 확인한다. OpenCode는 정확히 `1.18.3`, `sg`는 ast-grep, `yq`는 Mike Farah 제품이어야 한다. `doctor models`는 자격증명 파일을 읽거나 모델을 호출하지 않고 canonical config와 toolchain lock의 정확한 alias·localhost transport 설정만 확인한다. 정상 출력 상태는 config discovery `READY`, lead/peer admission `UNVERIFIED`, `UNVERIFIED`다.
 
@@ -54,7 +54,7 @@ CLI 종료 코드는 `0` 성공, `64` 사용법 오류, `65` 입력·설정·제
 
 `stage <absent-absolute-stage-path>`는 `manifest.txt`의 36개 managed leaf를 부재한 절대 경로에 byte-exact 투영하며 CLI는 넣지 않는다. source와 stage의 SHA-256을 확인하고 같은 parent의 임시 sibling에서 완성한 뒤 한 번의 rename으로 공개한다. stage 대상이 이미 있으면 exit `73`으로 거부한다.
 
-`install`은 인자를 받지 않는다. 이미 존재하는 물리 디렉터리 `$HOME/.config/opencode` 아래에 36개 managed leaf를 파일 단위로 설치하고 `$HOME/.local/bin/sensai`를 실행 가능한 regular file로 게시한다. managed leaf나 CLI가 없으면 생성하고, source와 byte-equal인 regular file이면 no-op이다. 내용이 다르거나 symlink·directory·비정규 파일이면 쓰기 전에 `package.managed_conflict`, exit `73`으로 거부한다. config root의 기존 파일과 디렉터리 등 unmanaged content는 보존하며, 실패 시 이번 실행이 만든 expected-hash 파일과 빈 디렉터리만 회수한다.
+`install`은 인자를 받지 않는다. Unix는 이미 존재하는 물리 디렉터리 `$HOME/.config/opencode` 아래에 36개 managed leaf를 파일 단위로 설치하고 `$HOME/.local/bin/sensai`를 게시한다. Windows는 `%USERPROFILE%\.config\opencode`와 `%USERPROFILE%\.local\bin\sensai.exe`에 같은 규칙을 적용한다. managed leaf나 CLI가 없으면 생성하고, source와 byte-equal인 regular file이면 no-op이다. 내용이 다르거나 symlink·reparse point·directory·비정규 파일이면 쓰기 전에 `package.managed_conflict`, exit `73`으로 거부한다. config root의 기존 파일과 디렉터리 등 unmanaged content는 보존하며, 실패 시 이번 실행이 만든 expected-hash 파일과 빈 디렉터리만 회수한다.
 
 mission의 schema·recipe는 파일별로 `<project>/.sensai/{schemas,recipes}`를 먼저 보고 해당 파일이 없을 때만 runtime global config의 `{schemas,recipes}`로 fallback한다. project 파일이 존재하지만 invalid, symlink, directory이면 global 파일로 우회하지 않고 fail closed한다. `opencode.json`과 `toolchain.lock.json`은 global config에서만 읽는다. project root는 `SENSAI_PROJECT_ROOT` 또는 물리 CWD지만 CWD의 `output/`이나 `$HOME/.local/output`은 runtime fallback이 아니다.
 
@@ -121,7 +121,7 @@ bare T2와 R3 표기는 사용하지 않는다. canonical mapping은 다음과 �
 
 ## 플랫폼 정책
 
-macOS가 deterministic 구현과 QA의 현재 gate다. schema, jq recipe, fixture, transaction, projection, render, continuity, disposable OpenCode load를 macOS에서 끝까지 구현한다. Windows는 release 후보와 native PowerShell kit가 준비된 뒤 사용자가 실행하는 최종 receipt다. Windows receipt는 H1/H2 선행 조건이 아니며, receipt 전에는 cross-platform 성공을 주장하지 않는다.
+macOS가 deterministic 구현과 QA의 현재 gate다. schema, jq recipe, fixture, transaction, projection, render, continuity, disposable OpenCode load를 macOS에서 끝까지 구현한다. Windows는 release 후보의 `sensai.exe`를 직접 전달받아 사용자가 실행하는 최종 receipt다. 실제 Windows 실행 전 상태는 `WINDOWS_COMPATIBILITY_UNVERIFIED`이고, Windows OpenCode slash-command 연동은 Scope OUT이다. Windows receipt는 H1/H2 선행 조건이 아니며, receipt 전에는 cross-platform 성공을 주장하지 않는다.
 
 ## 현재 검증
 
@@ -191,4 +191,4 @@ macOS가 deterministic 구현과 QA의 현재 gate다. schema, jq recipe, fixtur
 
 증거는 명시한 `--evidence` 디렉터리에 source fingerprint, assertion, command exit, reason, cleanup과 함께 기록한다. exit `64`는 usage, `70`은 test infrastructure 문제이며 의도한 RED로 인정하지 않는다.
 
-현재 terminal status는 `LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / MACOS_STATIC_SUBSTITUTE_PASS`다. macOS 대체 검사는 현재 payload·설정·경로·quoting·checksum의 host-side 결정적 범위만 뜻하며, Windows 네이티브 실행이나 호환성 성공을 주장하지 않는다.
+현재 terminal status는 `LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / WINDOWS_COMPATIBILITY_UNVERIFIED / MACOS_STATIC_SUBSTITUTE_PASS`다. macOS 대체 검사와 Windows cross-build는 현재 payload·설정·경로·quoting·checksum·artifact metadata의 host-side 결정적 범위만 뜻하며, Windows 네이티브 실행이나 호환성 성공을 주장하지 않는다.

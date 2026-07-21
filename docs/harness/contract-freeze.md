@@ -8,7 +8,7 @@
 
 | 주제 | canonical 결정 | 배제한 해석 |
 | --- | --- | --- |
-| payload | `output/`의 36-leaf packaging source + existing global config managed install + `$HOME/.local/bin/sensai` | 단일 config root에 CLI 포함 또는 runtime `output/` fallback |
+| payload | `output/`의 36-leaf packaging source + existing global config managed install + 플랫폼별 별도 `sensai`/`sensai.exe` | 단일 config root에 CLI 포함 또는 runtime `output/` fallback |
 | OpenCode | exact `1.18.3` | `1.17.18` 이상 범위 허용 |
 | model baseline | lead `zai/glm-5.2`, peer `sensai-ollama/qwen3.5:9b` | Qwen 35B를 현재 lead alias로 간주 |
 | model status | discovery/load 값만, `MODEL_ADMISSION=UNVERIFIED` | alias 발견을 live 입학으로 간주 |
@@ -26,7 +26,9 @@
 | instructions | source-owned 상대 계약만 | 장비별 절대 경로 의존 |
 | platform | macOS가 deterministic 구현/QA gate | Windows를 H1/H2 선행 조건으로 사용 |
 | Windows | 최종 사용자 receipt | 로컬 PASS 산술에 포함 |
-| scope | shell과 독립 CLI 기반 | Node/TS/Go/plugin/MCP/custom tool/Yeoman |
+| CLI | stdlib-only Go module, exact build prerequisite Go `1.26.5` | POSIX shell runtime, third-party Go module |
+| build target | `darwin/arm64` `sensai`, `windows/amd64` `sensai.exe` | 다른 target 또는 suffix |
+| scope | Go CLI와 독립 검증 도구 기반 | Node/TS/plugin/MCP/custom tool/Yeoman |
 
 ## source authority
 
@@ -47,4 +49,4 @@
 - Windows 또는 cross-platform PASS 주장 없음
 - commit, tag, push, publish 없음
 
-36개 managed config leaf, 별도 installed CLI와 deterministic OpenCode load는 구현됐다. runtime schema·recipe는 project `.sensai/{schemas,recipes}`의 같은 파일을 우선하고 해당 project file이 absent일 때만 global config로 fallback한다. present-invalid project file은 fail closed하며 CWD나 executable parent의 `output/`은 fallback이 아니다.
+36개 managed config leaf, 별도 installed Go CLI와 deterministic OpenCode load는 구현됐다. Unix installed path는 `$HOME/.local/bin/sensai`, Windows direct-CLI path는 `%USERPROFILE%\.local\bin\sensai.exe`다. runtime schema·recipe는 project `.sensai/{schemas,recipes}`의 같은 파일을 우선하고 해당 project file이 absent일 때만 global config로 fallback한다. present-invalid project file은 fail closed하며 CWD나 executable parent의 `output/`은 fallback이 아니다. Windows OpenCode slash-command integration은 payload binding을 바꾸지 않는 현재 범위 밖이며 `WINDOWS_COMPATIBILITY_UNVERIFIED`다.

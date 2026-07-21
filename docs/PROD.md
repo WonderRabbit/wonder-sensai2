@@ -2,11 +2,11 @@
 
 ## 현재 상태
 
-이 문서는 27개 PRD에서 제품 경계와 입학 조건을 복구한 source-owned 상위 계약이다. 현재 저장소에는 36개 config payload, global installer, 외부 CLI, schema·recipe·agent·command·skill과 결정적 검증이 있다. 이 구현은 live 모델 또는 Windows 호환성 완료를 뜻하지 않는다.
+이 문서는 기존 27개 planning PRD에서 제품 경계와 입학 조건을 복구한 source-owned 상위 계약이다. 현재 저장소에는 36개 config payload, stdlib-only Go CLI와 global installer, schema·recipe·agent·command·skill과 결정적 검증이 있다. Go runtime 요구사항은 [Go CLI와 Windows 전달 PRD](PRD-go-cli-windows.md), tracked binary의 rebuild·commit·push 절차는 [bin artifact 전달 PRD](PRD-bin-artifact-delivery.md)가 소유한다. 이 구현은 live 모델 또는 Windows 호환성 완료를 뜻하지 않는다.
 
 | 상태 축 | 현재 값 | 의미 |
 | --- | --- | --- |
-| `LOCAL_IMPLEMENTATION` | `GLOBAL_INSTALLER_READY` | 36개 managed config leaf, 외부 CLI, project/global overlay와 결정적 load가 구현됐다. |
+| `LOCAL_IMPLEMENTATION` | `GLOBAL_INSTALLER_READY` | 36개 managed config leaf, Go CLI, project/global overlay와 결정적 load가 구현됐다. |
 | `MODEL_ADMISSION` | `UNVERIFIED` | 별칭 발견·로드 값은 정했지만 live 응답과 tool call은 검증하지 않았다. |
 | `WINDOWS_RECEIPT` | `PENDING_USER_RECEIPT` | Windows 검증은 구현의 선행 조건이 아니라 최종 사용자 실행 영수증이다. |
 
@@ -17,11 +17,14 @@
 제품 구현 기준은 다음과 같다.
 
 - OpenCode 기준 버전은 `1.18.3`이다.
+- CLI build prerequisite는 정확히 Go `1.26.5`이고 module은 `github.com/WonderRabbit/wonder-sensai2`이며 외부 Go module을 추가하지 않는다.
+- `cmd/sensai/`와 `go.mod`가 CLI 동작의 semantic authority다. `bin/sensai`와 `bin/sensai.exe`는 이 source에서 exact matrix로 함께 재생성해 commit하는 tracked 전달 artifact이며 직접 수정하지 않는다.
+- `dist/`는 사용해도 ignored·noncanonical local scratch일 뿐 release나 전달의 권위 경로가 아니다.
 - `output/`은 설치 payload의 단일 packaging source다. runtime asset 탐색은 이 디렉터리나 실행 파일 parent로 fallback하지 않는다.
 - packaging leaf는 `output/AGENTS.md`, `output/opencode.json`, `output/agents/`, `output/commands/`, `output/skills/`, `output/schemas/`, `output/recipes/`, `output/toolchain.lock.json` 아래 정확히 36개다.
 - output의 사람이 읽는 제목·설명·지침·표시명은 한국어로 작성하고 기계 key/schema field/ID/path/command/skill/enum/reason code/문법은 원형을 보존한다.
-- root `manifest.txt`는 `output/` 상대 managed config leaf 36개를 나열한다. `stage`는 부재한 절대 target에 이 leaf만 투영하고, `install`은 기존 `$HOME/.config/opencode`에 파일 단위로 합류시킨다.
-- installed CLI는 config root 밖의 `$HOME/.local/bin/sensai` 하나다. `install`은 인자를 받지 않고 source checkout에서만 실행된다.
+- root `manifest.txt`는 `output/` 상대 managed config leaf 36개를 나열한다. `stage`는 부재한 절대 target에 이 leaf만 투영하고, `install`은 Unix의 기존 `$HOME/.config/opencode` 또는 Windows의 기존 `%USERPROFILE%\.config\opencode`에 파일 단위로 합류시킨다.
+- installed CLI는 config root 밖의 Unix `$HOME/.local/bin/sensai` 또는 Windows `%USERPROFILE%\.local\bin\sensai.exe` 하나다. `install`은 인자를 받지 않고 platform별 exact `bin/` source layout에서만 실행된다.
 - managed leaf나 CLI가 없으면 설치하고 byte-equal regular file이면 no-op이다. differing regular file, symlink, directory와 비정규 파일은 pre-write conflict이며 unmanaged content는 보존한다.
 - runtime schema·recipe는 project `.sensai/{schemas,recipes}`의 같은 상대 파일을 우선하고 project 파일이 없을 때만 global config의 파일로 fallback한다. present-invalid project 파일은 fail closed한다.
 - 목표 exact-set은 agent 2개, `sensai/*` command 9개, skill 15개다.
@@ -73,7 +76,7 @@ hard gate는 F0, F3, F5, 일관성 violation, 후보 admission이다. lead는 F0
 현재 구현에 다음을 추가하지 않는다.
 
 - Node.js 또는 TypeScript 제품 runtime
-- Go module, Go binary, 범용 wrapper
+- third-party Go module, wrapper shell, 범용 wrapper
 - plugin, MCP, custom tool, codegraph 상시 경로
 - Yeoman 또는 코드 생성
 - live model call, 자격 증명 복사, raw model transcript 저장
@@ -82,11 +85,11 @@ hard gate는 F0, F3, F5, 일관성 violation, 후보 admission이다. lead는 F0
 
 루트 `AGENTS.md`는 저장소 기여자와 fixture 관리 계약이다. runtime prompt는 `output/AGENTS.md`이며 staged config에서 자동 로드된다고 가정하지 않고, runtime 불변조건은 source-owned config, agent, command, skill에도 직접 둔다. 절대 경로의 `instructions` 의존은 허용하지 않는다.
 
-## Go와 확장 입학 게이트
+## Go CLI와 확장 입학 게이트
 
-Go wrapper를 포함한 후보 기능은 기본값이 `NOT_ADMITTED`다. 다음을 모두 만족할 때만 별도 변경으로 검토한다.
+현재 stdlib-only Go CLI는 기존 command·exit·`reason`, package transaction과 mission CAS를 보존하는 제품 runtime으로 입학했다. module source, exact Go `1.26.5`, 두 target과 Windows 증명 경계는 [Go CLI와 Windows 전달 PRD](PRD-go-cli-windows.md), tracked artifact 갱신과 Git 전달은 [bin artifact 전달 PRD](PRD-bin-artifact-delivery.md)를 따른다. 추가 wrapper, dependency 또는 확장 기능은 기본값이 `NOT_ADMITTED`다. 다음을 모두 만족할 때만 별도 변경으로 검토한다.
 
-1. 현재 shell과 독립 CLI 조합이 실패하는 재현 fixture가 최소 2개 있다.
+1. 현재 Go CLI와 독립 도구 조합이 실패하는 재현 fixture가 최소 2개 있다.
 2. 후보가 실패를 복구하고 기존 오류 의미와 exit semantics를 보존한다.
 3. 정확도, wall time, RSS, 안전성의 사전 threshold를 통과한다.
 4. deterministic 회귀와 퇴출 경로가 있다.

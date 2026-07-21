@@ -8,7 +8,7 @@ output의 사람이 읽는 제목, 설명, 지침, provider/model 표시명은 �
 
 `output/opencode.json`의 공급자 ID는 `sensai-ollama`, 주소는 `http://localhost:11434/v1`, `apiKey`는 `ollama`로 고정한다. 이 키는 로컬 OpenAI 호환 공급자 형식을 위한 비밀 아닌 자리표시자이며 실제 자격 증명이 아니다. 환경 변수·실제 비밀값·다른 호스트로 교체하는 설정은 exact config 검증에서 거부한다.
 
-`stage <absent-absolute-target>`는 36개 config leaf만 부재한 target에 원자 투영하며 CLI는 포함하지 않는다. `install`은 인자를 받지 않고 기존 물리 `$HOME/.config/opencode`에 이 leaf를 파일 단위로 설치하며 `$HOME/.local/bin/sensai` 하나를 별도로 게시한다. managed leaf와 CLI가 absent면 생성하고 source와 byte-equal인 regular file이면 no-op이다. differing regular file, symlink, directory 또는 비정규 파일은 `package.managed_conflict`, exit `73`으로 pre-write 거부한다. root 자체와 unmanaged file·directory는 그대로 보존하고 실패 시 이번 실행이 만든 expected-hash 파일과 owned empty directory만 rollback한다.
+`stage <absent-absolute-target>`는 36개 config leaf만 부재한 target에 원자 투영하며 CLI는 포함하지 않는다. `install`은 인자를 받지 않고 platform home의 기존 물리 `.config/opencode`에 이 leaf를 파일 단위로 설치하며 Unix `.local/bin/sensai` 또는 Windows `.local/bin/sensai.exe` 하나를 별도로 게시한다. managed leaf와 CLI가 absent면 생성하고 source와 byte-equal인 regular file이면 no-op이다. differing regular file, symlink·reparse point, directory 또는 비정규 파일은 `package.managed_conflict`, exit `73`으로 pre-write 거부한다. root 자체와 unmanaged file·directory는 그대로 보존하고 실패 시 이번 실행이 만든 expected-hash 파일과 owned empty directory만 rollback한다.
 
 `OPENCODE_CONFIG_DIR`는 OpenCode의 다른 설정 층과 합쳐지는 merged overlay다. 따라서 변수를 지정한 것만으로 isolation을 주장하지 않는다. 설치 위치를 바꾸지도 않는다. 의미 검증은 다음을 모두 갖춘 disposable 환경에서 수행한다.
 
@@ -24,7 +24,7 @@ OpenCode `1.18.3` debug 초기화는 disposable config root에 `.gitignore`를 �
 
 ## 실행 파일과 runtime asset 해석
 
-installed mode의 실행 파일은 regular executable `$HOME/.local/bin/sensai` 하나다. 절대 경로 호출과 `PATH` 호출은 해석 뒤 이 exact physical path여야 하며 symlink executable 또는 symlink parent를 거부한다. source mode는 checkout의 exact `<source>/bin/sensai`만 허용한다. source와 installed mode의 mission asset 선택은 같고 `stage`와 `install`만 source mode 전용이다.
+CLI는 module `github.com/WonderRabbit/wonder-sensai2`, exact build prerequisite Go `1.26.5`의 stdlib-only Go binary다. installed mode의 실행 파일은 Unix regular executable `$HOME/.local/bin/sensai` 또는 Windows regular `%USERPROFILE%\.local\bin\sensai.exe` 하나다. 절대 경로 호출과 `PATH` 호출은 해석 뒤 이 exact physical path여야 한다. Unix는 symlink executable 또는 symlink parent를 거부하고 Windows는 executable과 모든 parent의 symlink·junction·기타 reparse point를 거부한다. source mode는 Unix `<source>/bin/sensai`, Windows `<source>\bin\sensai.exe`만 허용한다. source와 installed mode의 mission asset 선택은 같고 `stage`와 `install`만 source mode 전용이다.
 
 runtime global config root는 `OPENCODE_CONFIG_DIR`, `${XDG_CONFIG_HOME}/opencode`, `$HOME/.config/opencode` 순으로 선택한다. `opencode.json`과 `toolchain.lock.json`은 항상 이 global root에서 읽는다. mission schema·recipe는 각 요청 파일마다 다음 순서로 선택한다.
 
@@ -83,4 +83,4 @@ permission은 의도와 사용자 승인 UI를 제공하지만 OS sandbox가 아
 
 ## 상태 표기
 
-runtime 구현과 local deterministic QA가 실제 통과하기 전 `LOCAL_IMPLEMENTATION_PASS`를 출력하지 않는다. 이 PASS는 core·install·AS-IS 결정적 범위이며 live F3-F5 성공이 아니다. delivery 후보 5 skill은 `VALUE_PROVEN` 전 exact deny이고 모델은 `MODEL_ADMISSION_UNVERIFIED`다. Windows native는 `WINDOWS_TEST_UNAVAILABLE`, compatibility는 `WINDOWS_COMPATIBILITY_UNVERIFIED`, macOS 대체 검사는 `MACOS_STATIC_SUBSTITUTE_PASS`로 분리한다.
+runtime 구현과 local deterministic QA가 실제 통과하기 전 `LOCAL_IMPLEMENTATION_PASS`를 출력하지 않는다. 이 PASS는 Go CLI의 core·install·AS-IS 결정적 범위이며 live F3-F5 성공이 아니다. delivery 후보 5 skill은 `VALUE_PROVEN` 전 exact deny이고 모델은 `MODEL_ADMISSION_UNVERIFIED`다. Windows cross-build metadata는 native 실행이 아니다. Windows native는 `WINDOWS_TEST_UNAVAILABLE`, compatibility는 `WINDOWS_COMPATIBILITY_UNVERIFIED`, macOS 대체 검사는 `MACOS_STATIC_SUBSTITUTE_PASS`로 분리한다.

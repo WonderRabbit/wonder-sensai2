@@ -1,6 +1,6 @@
 #!/bin/sh
 
-DOCS_EXPECTED_AGENTS_SHA256=fccf5723eeeff649553c624aa7c2c068d9656128f89bb6be41e9e9981344bb80
+DOCS_EXPECTED_AGENTS_SHA256=1d7bb0e60d2f41219032ef1af371755b5d2c323203d3e16b93b7bee3c162ec50
 
 docs_assert_contains() {
   DOCS_ASSERT_ID=$1
@@ -336,6 +336,8 @@ docs_clone_contract_source() {
     cp "$DOCS_CLONE_PRD" "$DOCS_CLONE_ROOT/plan/prd/" || return 70
   done
   cp "$SOURCE_ROOT/docs/PROD.md" "$DOCS_CLONE_ROOT/docs/PROD.md" || return 70
+  cp "$SOURCE_ROOT/docs/PRD-bin-artifact-delivery.md" "$DOCS_CLONE_ROOT/docs/PRD-bin-artifact-delivery.md" || return 70
+  cp "$SOURCE_ROOT/docs/PRD-go-cli-windows.md" "$DOCS_CLONE_ROOT/docs/PRD-go-cli-windows.md" || return 70
   cp "$SOURCE_ROOT/docs/r4-mapping.md" "$DOCS_CLONE_ROOT/docs/r4-mapping.md" || return 70
   for DOCS_CLONE_CONTRACT in "$SOURCE_ROOT"/docs/harness/*.md; do
     cp "$DOCS_CLONE_CONTRACT" "$DOCS_CLONE_ROOT/docs/harness/" || return 70
@@ -645,7 +647,8 @@ case_docs() {
   docs_assert_contains docs.dataflow_deliverable '`DATAFLOW`는 convention category가 아니라 AS-IS/TO-BE deliverable' "$SOURCE_ROOT/README.md"
 
   docs_assert_contains docs.macos_gate 'macOS가 deterministic 구현과 QA의 현재 gate' "$SOURCE_ROOT/README.md"
-  docs_assert_contains docs.windows_final 'Windows는 release 후보와 native PowerShell kit가 준비된 뒤 사용자가 실행하는 최종 receipt' "$SOURCE_ROOT/README.md"
+  docs_assert_contains docs.windows_final '`WINDOWS_COMPATIBILITY_UNVERIFIED`' "$SOURCE_ROOT/README.md"
+  docs_assert_contains docs.windows_direct_exe '`sensai\.exe`' "$SOURCE_ROOT/README.md"
   docs_assert_absent docs.no_early_windows_blocker 'EARLY_WINDOWS_BLOCKER|Windows receipt is required before macOS|WINDOWS_H1_H2_REQUIRED_BEFORE_MACOS' "$SOURCE_ROOT/README.md" "$SOURCE_ROOT/STATUS.md" "$SOURCE_ROOT/risk.md" "$SOURCE_ROOT/plan/todo_list.md" "$SOURCE_ROOT/plan/prd" || return 70
 
   docs_assert_contains docs.status_non_authority '비권위 로컬 요약' "$SOURCE_ROOT/STATUS.md"

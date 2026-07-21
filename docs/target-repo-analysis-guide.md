@@ -1,6 +1,6 @@
 # wonder-sensai 설치와 대상 저장소 분석 안내서
 
-이 문서는 OpenCode `1.18.3`과 현재 `bin/sensai` 구현을 기준으로 한다. 결정적 packaging·설치·mission 검증은 구현돼 있지만 live model response, TUI delegation과 Windows 실행은 별도 admission 대상이다. 설정이 load됐다는 사실을 모델 분석 성공으로 확대하지 않는다.
+이 문서는 OpenCode `1.18.3`과 현재 `cmd/sensai/` Go source를 기준으로 한다. 결정적 packaging·설치·mission 검증은 구현돼 있지만 live model response, TUI delegation과 Windows 실행은 별도 admission 대상이다. 설정이 load됐다는 사실을 모델 분석 성공으로 확대하지 않는다.
 
 ## 설치 topology
 
@@ -8,7 +8,7 @@
 
 | 경계 | 기본 위치 | 역할 |
 | --- | --- | --- |
-| source checkout | `/absolute/path/to/wonder-sensai2` | `output/`, `manifest.txt`, source `bin/sensai`, tests와 docs 보유 |
+| source checkout | `/absolute/path/to/wonder-sensai2` | `output/`, `manifest.txt`, `cmd/sensai/`, `go.mod`, tracked `bin/sensai`, `bin/sensai.exe`, tests와 docs 보유 |
 | global OpenCode config | `$HOME/.config/opencode` | installer가 관리하는 config leaf 36개와 기존 unmanaged content 보유 |
 | installed CLI | `$HOME/.local/bin/sensai` | 설치 뒤 사용하는 유일한 executable |
 | project | `/absolute/path/to/target` | `.sensai/{schemas,recipes}` override와 `docs/analysis/missions/` 보유 |
@@ -17,7 +17,7 @@
 
 ## 설치 전 확인
 
-source checkout과 HOME은 symlink component가 없는 physical absolute path여야 한다. global config root는 installer가 만들지 않으므로 먼저 존재하는 regular directory인지 확인한다.
+release source checkout은 tracked `bin/sensai`를 포함한다. `cmd/sensai/`와 `go.mod`가 semantic authority이고 binary는 exact Go `1.26.5`로 생성한 전달 artifact이므로 설치 안내 중 임의로 다시 build하지 않는다. source checkout과 HOME은 symlink component가 없는 physical absolute path여야 한다. global config root는 installer가 만들지 않으므로 먼저 존재하는 regular directory인지 확인한다.
 
 ```sh
 set -eu
@@ -72,7 +72,7 @@ install 뒤 global config와 model alias를 확인하는 가장 명시적인 호
 PATH="$HOME/.local/bin:$PATH" sensai doctor models
 ```
 
-installed mode는 해석된 executable이 exact physical `$HOME/.local/bin/sensai`일 때만 성립한다. executable 또는 parent symlink, 다른 위치의 동명 binary, relative PATH result는 `runtime.executable_invalid`다. source mode는 exact `<source>/bin/sensai`를 직접, 절대 경로 또는 PATH로 호출할 수 있다. source mode와 installed mode는 mission runtime asset을 같은 규칙으로 선택하며 `stage`와 `install`만 source mode 전용이다.
+installed mode는 해석된 executable이 exact physical `$HOME/.local/bin/sensai`일 때만 성립한다. executable 또는 parent symlink, 다른 위치의 동명 binary, relative PATH result는 `runtime.executable_invalid`다. source mode는 tracked exact `<source>/bin/sensai`를 직접, 절대 경로 또는 PATH로 호출할 수 있다. source mode와 installed mode는 mission runtime asset을 같은 규칙으로 선택하며 `stage`와 `install`만 source mode 전용이다.
 
 ## stage는 설치와 다르다
 
@@ -197,7 +197,7 @@ target에 `opencode.json`, `opencode.jsonc`, `.opencode/`, `AGENTS.md`, `CLAUDE.
 
 | reason | 의미 | 대응 |
 | --- | --- | --- |
-| `runtime.executable_invalid` | executable 위치·mode·symlink·physical path 오류 | exact source `bin/sensai` 또는 `$HOME/.local/bin/sensai` 사용 |
+| `runtime.executable_invalid` | executable 위치·mode·symlink·physical path 오류 | source checkout의 tracked exact `bin/sensai` 또는 `$HOME/.local/bin/sensai` 사용 |
 | `runtime.asset_missing` | 선택된 global/project asset이 없음 | provenance 경계에 필요한 regular file 설치 |
 | `runtime.asset_invalid` | selected asset이 invalid, symlink, directory 또는 unsafe path | 해당 selected file을 수정하고 다시 실행; 다른 층으로 우회 금지 |
 | `mission.project_root_invalid` | project root가 relative, symlink, non-directory 또는 filesystem root | physical absolute project directory 사용 |

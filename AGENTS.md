@@ -2,14 +2,19 @@
 
 ## 프로젝트 구조 및 모듈 구성
 
-이 저장소는 `wonder-sensai` OpenCode 하네스의 명세, packaging source와 실행 CLI를 관리한다. `output/`은 설치 payload 36개의 유일한 source root이지만 runtime 탐색 root는 아니다. `./bin/sensai install`은 기존 `$HOME/.config/opencode` 아래에 managed leaf를 파일 단위로 추가하고 CLI 하나를 `$HOME/.local/bin/sensai`에 설치한다. 루트 `AGENTS.md`는 저장소 기여자 계약이며 runtime prompt가 아니다. `fixtures/`, `tests/`, `bin/`, `docs/`, 루트 `manifest.txt`는 repository-side 자산으로 `output/`에 복사하지 않는다. `README.md`는 목표 워크플로와 근거 계약을 정의하고, `docs/PROD.md`에는 제품 경계와 Go 도입 게이트가 있으며, `docs/r4-mapping.md`에는 작업·에이전트·도구 매핑이 있다. 연구 기록은 `docs/research/EXP-template.md`를 기준으로 작성한다. `.gitignore`에 포함된 `plan/`은 로컬 계획 자료이므로 커밋되는 문서가 이 경로에 의존하지 않게 한다.
+이 저장소는 `wonder-sensai` OpenCode 하네스의 명세, packaging source, stdlib-only Go CLI source와 두 tracked 전달 artifact를 관리한다. `output/`은 설치 payload 36개의 유일한 source root이지만 runtime 탐색 root는 아니다. source checkout은 `cmd/sensai/`, `go.mod`, macOS `bin/sensai`, Windows `bin/sensai.exe`를 포함한다. 루트 `AGENTS.md`는 저장소 기여자 계약이며 runtime prompt가 아니다. `fixtures/`, `tests/`, `cmd/`, `bin/`, `docs/`, 루트 `manifest.txt`는 repository-side 자산으로 `output/`에 복사하지 않는다. `README.md`는 목표 워크플로와 근거 계약을 정의하고, `docs/PROD.md`에는 제품 경계와 Go 도입 게이트가 있으며, `docs/PRD-bin-artifact-delivery.md`에는 binary rebuild·commit·push 계획이 있다. `docs/r4-mapping.md`에는 작업·에이전트·도구 매핑이 있다. 연구 기록은 `docs/research/EXP-template.md`를 기준으로 작성한다. `.gitignore`에 포함된 `plan/`은 로컬 계획 자료이므로 커밋되는 문서가 이 경로에 의존하지 않게 한다.
 
 ## 빌드, 테스트 및 개발 명령
 
-현재 체크아웃에는 실행 가능한 fail-closed 테스트 러너가 있다. 변경 범위에 맞는 selector를 실행하고, packaging source는 `output/`, installed config는 격리한 기존 `$HOME/.config/opencode`, CLI는 격리한 `$HOME/.local/bin/sensai`에서 검사한다.
+현재 체크아웃에는 실행 가능한 fail-closed 테스트 러너가 있다. artifact를 갱신할 때는 exact Go `1.26.5` system binary 또는 task-local Go binary로 현재 source를 exact tracked path `bin/sensai`와 `bin/sensai.exe`에 build한다. packaging source는 `output/`, installed config는 격리한 platform home의 `.config/opencode`, CLI는 격리한 Unix `.local/bin/sensai` 또는 Windows `.local/bin/sensai.exe`에서 검사한다. `dist/`를 사용한다면 ignored·noncanonical local scratch로만 사용하고 최종 전달물이나 commit 대상으로 취급하지 않는다.
 
 ```sh
 jq empty output/opencode.json
+SENSAI_GO="${SENSAI_GO:-go}" # system 또는 task-local exact Go 1.26.5
+test "$("$SENSAI_GO" version | awk '{print $3}')" = go1.26.5
+mkdir -p bin
+env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$SENSAI_GO" build -trimpath -o bin/sensai ./cmd/sensai
+env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 "$SENSAI_GO" build -trimpath -o bin/sensai.exe ./cmd/sensai
 ./tests/test.sh self
 ./tests/test.sh docs
 ./tests/test.sh fixtures
@@ -18,7 +23,7 @@ jq empty output/opencode.json
 git diff --check
 ```
 
-`./bin/sensai`와 root `manifest.txt`는 구현돼 있다. `stage`는 부재한 절대 target에 36개 config leaf만 투영하고 `install`은 인자를 받지 않는다. 설치는 managed leaf가 없으면 생성하고 byte-equal regular file이면 no-op이며, differing regular file·symlink·directory 충돌은 쓰기 전에 exit `73`으로 거부한다. 기존 root와 unmanaged content는 보존한다.
+root `manifest.txt`와 Go CLI source는 구현돼 있다. `cmd/sensai/`와 `go.mod`가 동작과 재현의 semantic authority이고, tracked `bin/sensai`와 `bin/sensai.exe`는 그 source에서 생성한 전달 artifact다. artifact는 직접 수정하지 않고 source 변경 뒤 두 target을 함께 재생성한다. `stage`는 부재한 절대 target에 36개 config leaf만 투영하고 `install`은 인자를 받지 않는다. 설치는 managed leaf가 없으면 생성하고 byte-equal regular file이면 no-op이며, differing regular file·symlink·directory 충돌은 쓰기 전에 exit `73`으로 거부한다. 기존 root와 unmanaged content는 보존한다.
 
 ## Fixture corpus와 검증 계약
 
@@ -35,7 +40,7 @@ fixture를 하나라도 바꾸면 다음 순서 전체를 수행한다.
 
 ## 코딩 스타일 및 이름 규칙
 
-파일에서 다른 언어를 요구하지 않는 한 문서는 간결한 한국어로 작성한다. ATX 제목, 언어가 지정된 코드 펜스, 경로와 식별자를 위한 백틱, `| --- |` 구분선을 사용하는 Markdown 표를 따른다. 요구사항 ID와 상태 값의 철자를 임의로 바꾸지 않는다. 설명형 파일명은 `r4-mapping.md`처럼 kebab-case를 사용하고, 연구 기록 ID는 `EXP-YYYYMMDD-NNN` 형식을 따른다. JSON은 공백 두 칸으로 들여쓴다. 현재 P0 설계는 shell과 독립 CLI를 사용하므로 Node/TypeScript 런타임 의존성을 추가하지 않는다.
+파일에서 다른 언어를 요구하지 않는 한 문서는 간결한 한국어로 작성한다. ATX 제목, 언어가 지정된 코드 펜스, 경로와 식별자를 위한 백틱, `| --- |` 구분선을 사용하는 Markdown 표를 따른다. 요구사항 ID와 상태 값의 철자를 임의로 바꾸지 않는다. 설명형 파일명은 `r4-mapping.md`처럼 kebab-case를 사용하고, 연구 기록 ID는 `EXP-YYYYMMDD-NNN` 형식을 따른다. JSON은 공백 두 칸으로 들여쓴다. 현재 P0 설계는 stdlib-only Go CLI와 독립 검증 도구를 사용하므로 Node/TypeScript 런타임 의존성을 추가하지 않는다.
 
 `output/` 아래에서 사람이 읽는 제목, 설명, 지침, provider/model 표시명은 한국어로 작성한다. OpenCode가 요구하는 key와 schema field, provider/model ID, 경로, command/skill 이름, stable ID, enum, reason code, shell·JSON·jq 문법은 번역하지 않고 정확히 보존한다. 기계 식별자를 한국어화하거나 영어 자연어 설명을 output에 남기는 변경은 모두 실패다.
 
