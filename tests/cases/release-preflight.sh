@@ -4,10 +4,10 @@ release_preflight_write_external_statuses() {
   RELEASE_EXTERNAL_LOCAL_STATUS=${1:-PASS}
   if test "$RELEASE_EXTERNAL_LOCAL_STATUS" = PASS; then
     RELEASE_EXTERNAL_LOCAL_LABEL=LOCAL_IMPLEMENTATION_PASS
-    RELEASE_EXTERNAL_TERMINAL='LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / MACOS_STATIC_SUBSTITUTE_PASS'
+    RELEASE_EXTERNAL_TERMINAL='LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / WINDOWS_COMPATIBILITY_UNVERIFIED / MACOS_STATIC_SUBSTITUTE_PASS'
   else
     RELEASE_EXTERNAL_LOCAL_LABEL=LOCAL_IMPLEMENTATION_FAIL
-    RELEASE_EXTERNAL_TERMINAL='LOCAL_IMPLEMENTATION_FAIL / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / MACOS_STATIC_SUBSTITUTE_PASS'
+    RELEASE_EXTERNAL_TERMINAL='LOCAL_IMPLEMENTATION_FAIL / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / WINDOWS_COMPATIBILITY_UNVERIFIED / MACOS_STATIC_SUBSTITUTE_PASS'
   fi
   jq -n \
     --arg source_fingerprint "$SOURCE_FINGERPRINT" \
@@ -55,17 +55,22 @@ release_preflight_check_runtime_boundaries() {
       'config manifest 또는 외부 CLI 계약이 다르다' || true
   fi
 
-  RELEASE_OUTPUT_LITERAL_COUNT=$(rg -o --no-config '\boutput\b' \
-    "$SOURCE_ROOT/bin/sensai" | wc -l | tr -d ' ') || return 70
-  RELEASE_RUNTIME_ROOT_TOKEN_COUNT=$(rg -o --no-config '\bRUNTIME_ROOT\b' \
-    "$SOURCE_ROOT/bin/sensai" | wc -l | tr -d ' ') || return 70
-  if test "$RELEASE_OUTPUT_LITERAL_COUNT" -eq 1 && \
-     test "$RELEASE_RUNTIME_ROOT_TOKEN_COUNT" -eq 0; then
+  set +e
+  "${SENSAI_GO:-go}" version -m "$SOURCE_ROOT/bin/sensai" \
+    >"$RUN_TMP/release-preflight-module.txt" 2>"$RUN_TMP/release-preflight-module.err"
+  RELEASE_MODULE_RC=$?
+  OPENCODE_CONFIG_DIR=$SOURCE_ROOT/output "$SOURCE_ROOT/bin/sensai" help \
+    >"$RUN_TMP/release-preflight-help.out" 2>"$RUN_TMP/release-preflight-help.err"
+  RELEASE_HELP_RC=$?
+  if test "$RELEASE_MODULE_RC" -eq 0 && test "$RELEASE_HELP_RC" -eq 0 && \
+     rg -q --no-config '^[[:space:]]*path[[:space:]]+github\.com/WonderRabbit/wonder-sensai2/cmd/sensai$' \
+       "$RUN_TMP/release-preflight-module.txt" && \
+     rg -q --no-config '^사용법:$' "$RUN_TMP/release-preflight-help.out"; then
     assert_record release-preflight.packaging_runtime_path_separation 0 \
-      'packaging output token은 정확히 1개이고 RUNTIME_ROOT token은 0개다' || true
+      'Go module identity와 source-layout runtime help가 유효하다' || true
   else
     assert_record release-preflight.packaging_runtime_path_separation 1 \
-      "output_count=$RELEASE_OUTPUT_LITERAL_COUNT runtime_root_count=$RELEASE_RUNTIME_ROOT_TOKEN_COUNT" || true
+      "module_exit=$RELEASE_MODULE_RC help_exit=$RELEASE_HELP_RC" || true
   fi
 
   if jq -e '
@@ -271,7 +276,7 @@ case_release_preflight() {
   assert_file release-preflight.contract_file "$RELEASE_PREFLIGHT_CONTRACT" || true
   if jq -e '
       .schema_version == "1.0"
-      and .terminal_status == "LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / MACOS_STATIC_SUBSTITUTE_PASS"
+      and .terminal_status == "LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / WINDOWS_COMPATIBILITY_UNVERIFIED / MACOS_STATIC_SUBSTITUTE_PASS"
       and (.cases | type == "array" and length == 53)
       and ([.cases[].id] | unique | length) == 53
       and ([.cases[].argv | join(" ")] | unique | length) == 53
@@ -383,7 +388,7 @@ case_release_preflight() {
     and .statuses.windows_native.status == "TEST_UNAVAILABLE"
     and .statuses.windows_compatibility.status == "UNVERIFIED"
     and .statuses.macos_static_substitute.status == "PASS"
-    and .terminal_status == "LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / MACOS_STATIC_SUBSTITUTE_PASS"
+    and .terminal_status == "LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / WINDOWS_COMPATIBILITY_UNVERIFIED / MACOS_STATIC_SUBSTITUTE_PASS"
   ' "$EVIDENCE_DIR/external-statuses.json" || true
 
   jq -n \
@@ -401,7 +406,7 @@ case_release_preflight() {
 
   jq -n \
     --arg source_fingerprint "$SOURCE_FINGERPRINT" \
-    --arg terminal_status 'LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / MACOS_STATIC_SUBSTITUTE_PASS' \
+    --arg terminal_status 'LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / WINDOWS_COMPATIBILITY_UNVERIFIED / MACOS_STATIC_SUBSTITUTE_PASS' \
     '{
       task:"T27",
       status:"LOCAL_PREFLIGHT_PASS",

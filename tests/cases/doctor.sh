@@ -18,10 +18,12 @@ doctor_run() {
   else
     assert_record doctor.cli_executable 1 'bin/sensai 실행 비트가 없다' || true
   fi
-  if sh -n "$DOCTOR_CLI"; then
-    assert_record doctor.posix_syntax 0 'POSIX shell 문법이 유효하다' || true
+  if "${SENSAI_GO:-go}" version -m "$DOCTOR_CLI" >"$DOCTOR_BASE/module.txt" 2>"$DOCTOR_BASE/module.err" && \
+     rg -q --no-config '^[[:space:]]*path[[:space:]]+github\.com/WonderRabbit/wonder-sensai2/cmd/sensai$' \
+       "$DOCTOR_BASE/module.txt"; then
+    assert_record doctor.go_module_identity 0 '실행 파일이 sensai Go module artifact다' || true
   else
-    assert_record doctor.posix_syntax 1 'POSIX shell 문법이 유효하지 않다' || true
+    assert_record doctor.go_module_identity 1 '실행 파일의 sensai Go module identity가 다르다' || true
   fi
 
   set +e

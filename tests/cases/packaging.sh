@@ -69,23 +69,19 @@ packaging_assert_exact_tree() {
   fi
 }
 
-packaging_assert_output_literal_contract() {
-  PACKAGING_OUTPUT_COUNT=$(rg -o --no-config '\boutput\b' "$SOURCE_ROOT/bin/sensai" | wc -l | tr -d ' ') || return 70
-  assert_eq packaging.output_literal_contract 1 "$PACKAGING_OUTPUT_COUNT" || true
-  for PACKAGING_FORBIDDEN_LITERAL in \
-    'RUNTIME_ROOT=.*output' \
-    '\$RUNTIME_ROOT/output' \
-    '\$SOURCE_ROOT/output' \
-    'output\.leaves'; do
-    if rg -q --no-config "$PACKAGING_FORBIDDEN_LITERAL" "$SOURCE_ROOT/bin/sensai"; then
-      assert_record packaging.output_forbidden_literals 1 \
-        "금지된 output 결합이 남았다: $PACKAGING_FORBIDDEN_LITERAL" || true
-    fi
-  done
-  if ! rg -q --no-config \
-      'RUNTIME_ROOT=.*output|\$RUNTIME_ROOT/output|\$SOURCE_ROOT/output|output\.leaves' \
-      "$SOURCE_ROOT/bin/sensai"; then
-    assert_record packaging.output_forbidden_literals 0 'runtime/output 및 stale output.leaves 결합이 없다' || true
+packaging_assert_go_binary_contract() {
+  set +e
+  "${SENSAI_GO:-go}" version -m "$SOURCE_ROOT/bin/sensai" \
+    >"$RUN_TMP/packaging-module.txt" 2>"$RUN_TMP/packaging-module.err"
+  PACKAGING_MODULE_RC=$?
+  evidence_log_command packaging-module '${SENSAI_GO:-go} version -m ./bin/sensai' "$PACKAGING_MODULE_RC"
+  assert_eq packaging.module_metadata_exit 0 "$PACKAGING_MODULE_RC" || true
+  if test "$PACKAGING_MODULE_RC" -eq 0 && \
+     rg -q --no-config '^[[:space:]]*path[[:space:]]+github\.com/WonderRabbit/wonder-sensai2/cmd/sensai$' \
+       "$RUN_TMP/packaging-module.txt"; then
+    assert_record packaging.go_module_identity 0 '실행 파일이 sensai Go module artifact다' || true
+  else
+    assert_record packaging.go_module_identity 1 '실행 파일의 sensai Go module identity가 다르다' || true
   fi
 }
 
@@ -103,7 +99,7 @@ case_packaging() {
   fi
   assert_eq packaging.manifest_count 36 \
     "$(wc -l <"$SOURCE_ROOT/manifest.txt" | tr -d ' ')" || true
-  packaging_assert_output_literal_contract || return 70
+  packaging_assert_go_binary_contract || return 70
 
   packaging_tree_hashes "$SOURCE_ROOT" "$RUN_TMP/packaging-source.sha256" || return 70
   tooling_sha256_file "$SOURCE_ROOT/manifest.txt" || return 70

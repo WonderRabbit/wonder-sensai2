@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "terminal_status": "LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / MACOS_STATIC_SUBSTITUTE_PASS",
+  "terminal_status": "LOCAL_IMPLEMENTATION_PASS / MODEL_ADMISSION_UNVERIFIED / WINDOWS_TEST_UNAVAILABLE / WINDOWS_COMPATIBILITY_UNVERIFIED / MACOS_STATIC_SUBSTITUTE_PASS",
   "cases": [
     { "id": "selector.self", "category": "runner", "argv": ["self"] },
     { "id": "selector.docs", "category": "source", "argv": ["docs"] },
