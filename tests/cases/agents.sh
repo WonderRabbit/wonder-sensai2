@@ -47,14 +47,16 @@ agents_check_runtime() {
     .model == "zai/glm-5.2"
   ' "$AGENTS_LEAD_JSON" || true
   assert_jq agents.lead_permission '
-    (.permission | keys_unsorted) == ["edit","task","skill"] and
+    (.permission | keys_unsorted) == ["edit","task","skill","codegraph_*","codegraph_explore"] and
     (.permission.edit | keys_unsorted) == ["*","docs/analysis/missions/**","**/../**"] and
     .permission.edit == {"*":"deny","docs/analysis/missions/**":"allow","**/../**":"deny"} and
     (.permission.task | keys_unsorted) == ["*","sensai-evidence-peer"] and
     .permission.task == {"*":"deny","sensai-evidence-peer":"allow"} and
     (.permission.skill | keys_unsorted) == ["*","sensai-business-trace","sensai-checklist","sensai-convention-extract","sensai-evidence-first","sensai-mermaid-sequence","sensai-react-trace","sensai-spec-evidence","sensai-stack-discovery","sensai-ui-definition","sensai-vertx-trace"] and
     .permission.skill["*"] == "deny" and
-    all(.permission.skill | to_entries[1:][]; .value == "allow")
+    all(.permission.skill | to_entries[1:][]; .value == "allow") and
+    .permission["codegraph_*"] == "deny" and
+    .permission.codegraph_explore == "ask"
   ' "$AGENTS_LEAD_JSON" || true
 
   assert_jq agents.peer_fields '
@@ -65,7 +67,7 @@ agents_check_runtime() {
     .hidden == true
   ' "$AGENTS_PEER_JSON" || true
   assert_jq agents.peer_permission '
-    (.permission | keys_unsorted) == ["edit","task","todowrite","question","skill"] and
+    (.permission | keys_unsorted) == ["edit","task","todowrite","question","skill","codegraph_*"] and
     .permission.edit == "deny" and
     .permission.task == "deny" and
     .permission.todowrite == "deny" and
@@ -89,7 +91,9 @@ agents_check_runtime() {
       "sensai-stack-discovery":"allow",
       "sensai-convention-extract":"allow",
       "sensai-business-trace":"allow"
-    }
+    } and
+    .permission["codegraph_*"] == "deny" and
+    (.permission | has("codegraph_explore") | not)
   ' "$AGENTS_PEER_JSON" || true
 
   assert_jq agents.config_routing '

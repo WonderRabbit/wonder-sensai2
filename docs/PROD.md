@@ -71,13 +71,26 @@ hard gate는 F0, F3, F5, 일관성 violation, 후보 admission이다. lead는 F0
 
 `DATAFLOW`는 convention category가 아니라 검증 대상 deliverable이다. AS-IS는 UI 정의서, 시퀀스, 데이터플로우, 사용자 스토리 4종이다. TO-BE는 같은 4종과 테스트 시나리오를 합친 5종이다. 모든 사실과 산출 요소는 안정적 ID와 직접 근거를 가지며, 근거 부족·복수 후보·충돌은 `UNKNOWN`, `unresolved`, `ambiguous`, `many_to_many`, `conflict`로 보존한다.
 
+## CodeGraph 하이브리드 입학 계약
+
+CodeGraph는 F1/F2의 cross-file 관계 후보를 좁히는 optional extension candidate lane이며 canonical source나 validator가 아니다. 현재 상태는 `CODEGRAPH_ADMISSION=NOT_ADMITTED`이고 후보 평가의 시작 상태는 `REQUIRED_TO_EVALUATE`다. default·required 분석 경로가 아니며 아래 route는 제품 입학 완료가 아니라 후보 평가 절차다. MCP permission은 unknown `codegraph_*`를 deny하고 exact `codegraph_explore`만 `ask`한다. package는 MCP나 CodeGraph server/index를 설치·수정하지 않는다. 사용자가 command 기반 MCP를 별도로 구성해도 CLI status admission을 먼저 통과하고 이 exact 요청을 승인한 경우에만 MCP explore가 primary route다. catalog 부재나 usable response 전 MCP `timeout`, `deny`, `transport_error`에서는 같은 frozen packet으로 package가 승인한 read-only CLI에 정확히 한 번 failover한다. MCP와 CLI를 경쟁 SSOT로 만들지 않는다.
+
+route-level admission은 CLI 존재 확인과 정확한 `codegraph status . --json` 결과가 소유한다. `initialized=true`, canonical target root와 `projectPath` 일치, `pendingChanges.added|modified|removed`가 모두 정수 `0`, `worktreeMismatch=null`, `index.reindexRecommended=false`인 경우만 후보 평가의 graph query를 허용한다. 실패는 `out_of_scope`, `stale_graph`, `unsupported`로 보존하고 graph query를 0회로 유지한 채 repo-local `rg` 또는 `sg`로 fallback한다. catalog 존재, status PASS, persistent read-only permission은 capability projection일 뿐 확장 입학 증거가 아니다.
+
+한국어 원문은 `original_ko`로 보존한다. lead는 direct source에서 English topic/framework term과 symbol/file anchor를 먼저 확인하고 `query_en` ASCII 120바이트, symbol별 160바이트, path별 240바이트와 count cap을 검사한 뒤 graph query 전에 one-subject·one-scope packet을 freeze한다. required field/type이 없거나 malformed인 입력은 `unsupported`, byte·count cap을 넘은 입력은 `ambiguous`로 폐기한다. 허용된 query는 최대 1회이며 query, MCP, CLI는 같은 packet을 사용하고 graph 결과로 query나 anchor를 정제하지 않는다. MCP 또는 CLI가 usable response를 반환했지만 schema-invalid·`malformed`이면 전체를 폐기하고 `unsupported`, raw response가 65536바이트를 넘으면 전체를 폐기하고 `ambiguous`로 중단한다. usable response 이후 실패에는 다른 transport failover, retry, merge를 허용하지 않는다. permission glob은 command shape와 numeric flag만 제한하며 response byte를 강제하지 않으므로, 전체 경로는 별도의 call·file·numeric cap과 consumption cap으로 제한될 뿐 완전한 기계적 bounded 실행이라고 주장하지 않는다. graph 결과는 candidate이며 lead가 현재 source의 direct `path:line`을 다시 확인하고 다른 failure mode의 도구와 합치기 전에는 canonical trace에 병합하지 않는다. 이 조합이 필요한 이유는 filesystem, lexical, AST, graph index, runtime이 서로 다른 사각지대를 가지기 때문이다.
+
+persistent read-only CLI allow는 사용자 승인 경로로 유지한다. 다만 OpenCode `1.18.3`은 shell AST의 각 command를 독립적으로 permission 평가하므로 CodeGraph glob은 각 command의 argv shape·numeric flag와 secret·redirect 방어를 투영할 뿐, `|`, `;`, `&&`, `||`, `&`로 여러 개별 허용 command를 조합하거나 per-turn·per-mission call count를 초과하는 일을 기계적으로 막지 못한다. 각 명령 별도 실행, pipe 금지, query 최대 1회는 lead/skill behavioral budget이지 security boundary가 아니다. 기계적 강제가 필요하면 CodeGraph bash pattern을 `ask`/`deny`로 바꾸거나 외부 sandbox/wrapper를 사용해야 하며 현재 package는 이를 설치하지 않는다. unknown `codegraph_*` MCP deny와 exact `codegraph_explore` ask는 별도 경계로 유지한다.
+
+F3는 검증된 F1/F2 원장만 AS-IS 산출로 투영하고 F4는 승인된 AS-IS 원장만 binding 설계에 사용한다. 두 단계 모두 새 graph discovery나 graph 호출을 실행하지 않는다. 필요한 관계가 `unsupported`, `unresolved`, `ambiguous`, `conflict`이거나 문서와 source가 불일치하면 산출·설계를 중단한다. 상세 운용은 [CodeGraph 하이브리드 분석 가이드](codegraph-analysis-guide.md)를 따른다.
+
 ## 제품 금지선
 
 현재 구현에 다음을 추가하지 않는다.
 
 - Node.js 또는 TypeScript 제품 runtime
 - third-party Go module, wrapper shell, 범용 wrapper
-- plugin, MCP, custom tool, codegraph 상시 경로
+- package가 설치·수정하는 plugin, MCP, custom tool 또는 CodeGraph server/index
+- `codegraph init`, `index`, `sync`, `serve`, `uninit`, `install`, `upgrade` 자동 실행
 - Yeoman 또는 코드 생성
 - live model call, 자격 증명 복사, raw model transcript 저장
 - managed 범위 밖의 전역 OpenCode 설정 수정 또는 기존 content 덮어쓰기
@@ -96,6 +109,8 @@ hard gate는 F0, F3, F5, 일관성 violation, 후보 admission이다. lead는 F0
 5. 사람이 증거를 검토해 승인한다.
 
 편의성이나 미래 가능성만으로는 입학할 수 없다.
+
+CodeGraph는 이 확장 gate의 optional candidate lane이다. 현재 `CODEGRAPH_ADMISSION=NOT_ADMITTED`이며 새 평가 기록은 `REQUIRED_TO_EVALUATE`에서 시작한다. 위 5개 gate와 사람 승인을 모두 만족하기 전에는 route-level status PASS, MCP ask 승인, persistent read-only permission만으로 입학을 주장할 수 없다.
 
 ## 권위와 증거
 

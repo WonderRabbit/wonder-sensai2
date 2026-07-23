@@ -17,6 +17,14 @@ subtask: false
 - 정규 미션 루트는 정확히 `docs/analysis/missions/<mission-id>/`다. 기존 미션 식별자나 `source fingerprint`가 다르면 중단한다.
 - 입력 누락이나 경로 모호성이 있으면 누락 필드와 `UNKNOWN`만 보고하고 어떤 파일도 쓰지 않는다.
 
+## CodeGraph 비즈니스 비교 경로
+
+- `sensai-evidence-first`를 `CodeGraph` 운영의 단일 권위로 적용하라. 해당 스킬의 `PRE_QUERY_ADMISSION`, 질의 전 묶음 고정, 정확한 바이트·개수·호출 한도, `MCP` 질의와 `CLI` 대체, 응답 상한, 원문 재확인, 중단 상태를 그대로 따르고 여기서 재정의하거나 완화하지 마라.
+- `codegraph status . --json` 입학 판정이 통과한 뒤 사용자에게 별도 `MCP` 실행 권한을 요청하고 허용된 경우에만 `codegraph_explore`를 실행하라. 사용 가능한 응답 전 `timeout`·`deny`·`transport_error`만 `CLI` 대체가 가능하며, `malformed`·`schema-invalid`·응답 상한 초과는 재시도·대체·병합 없이 중단하라. 그 밖의 경로는 `sensai-evidence-first`의 고정 경로만 따른다.
+- 질의 전 묶음을 고정한 뒤 그래프 결과로 `query_en`, `scope_prefix`, 검증된 앵커 또는 `route`를 다듬거나 추가하거나 번역하지 마라.
+- `F2`는 선택한 도메인 문서와 코드의 비즈니스 흐름을 양방향 직접 근거로 비교한다. 문서와 그래프 출력은 후보로 유지하고 주 에이전트가 현재 원문의 직접 `path:line`을 재확인해 `consistent`로 판정한 경우에만 정규 `trace.json`과 용어집 후보를 직렬 병합하라.
+- 이름 유사, 문서↔코드 불일치 또는 근거 부족은 `unresolved`, `ambiguous`, `many_to_many`, `conflict`, `unsupported`로 보존하고 병합을 중단하라. 질의 묶음, 경로, 비교 상태 같은 일시 자료를 `trace schema`나 `trace.json` 속성으로 저장하지 마라.
+
 ## 스킬 적용 순서
 
 OpenCode에 별도 `skill` 순서 필드가 있다고 가정하지 말고 아래 순서를 본문 계약으로 지켜라.

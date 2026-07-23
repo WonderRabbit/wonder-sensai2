@@ -52,14 +52,26 @@ legacy `/sensai/design`은 target exact-set에 없다.
 | task | writer/worker | skill | 결정적 도구 | 결과 규칙 |
 | --- | --- | --- | --- | --- |
 | stack discovery | peer 수집, lead 확인 | stack-discovery | `fd`, `rg`, `jq`, `yq` | 미식별은 `UNSUPPORTED` |
-| 구조 후보 | peer | react/vertx/spec trace | `ast-grep`, `rg` 구조화 출력 | 후보는 사실이 아님 |
-| convention 판정 | lead | convention-extract | `ast-grep`, `jq` | 7 category, 각 직접 근거 |
-| business 사실 | peer 수집, lead 판정 | business-trace | `ast-grep`, `rg`, `jq`, `yq` | 암묵 규칙은 `UNKNOWN` |
+| 구조 후보 | peer | react/vertx/spec trace | `sg`, `rg` 구조화 출력 | 후보는 사실이 아님 |
+| 관계 후보 (F1/F2) | peer 수집, lead 재확인 | evidence-first | admission된 CodeGraph MCP/CLI, `rg`, `sg` | graph edge는 candidate, direct `path:line` 필수 |
+| convention 판정 | lead | convention-extract | `sg`, `jq` | 7 category, 각 직접 근거 |
+| business 사실 | peer 수집, lead 판정 | business-trace | `sg`, `rg`, `jq`, `yq` | 암묵 규칙은 `UNKNOWN` |
 | AS-IS 투영 | lead | UI, sequence, dataflow, story | `jq`, `mdq`, `mmdc` | DATAFLOW는 deliverable |
 | 수정요청 분석 | lead | requirement-analyze | `jq`, `mdq` | source와 modality 보존 |
-| 변경 설계 | lead | change-design | `ast-grep`, `rg`, `jq` | binding과 violation gate 필수 |
+| 변경 설계 | lead | change-design | 검증된 원장, `sg`, `rg`, `jq` | 새 graph 호출 금지, binding과 violation gate 필수 |
 | TO-BE 투영 | lead | UI, sequence, dataflow, story, test | `jq`, `mdq`, `mmdc` | 5-mode provenance |
 | 독립 검증 | peer 조사, 결정적 validator 판정 | evidence-first, checklist | `jq`, `mdq`, `mmdc` | 모델 성공 문장 불인정 |
+
+## CodeGraph route와 단계 제한
+
+- CodeGraph는 확장 입학 게이트의 optional candidate lane이며 현재 `CODEGRAPH_ADMISSION=NOT_ADMITTED`, 평가 시작 상태는 `REQUIRED_TO_EVALUATE`다. default·required path가 아니고 5개 확장 gate와 사람 승인 전에는 입학을 주장하지 않는다. persistent read-only permission은 capability projection일 뿐 admission이 아니다.
+- unknown `codegraph_*` MCP는 deny하고 exact `codegraph_explore`만 `ask`한다. 사용자가 command 기반 MCP를 구성했더라도 먼저 CLI `codegraph status . --json`으로 canonical root와 freshness를 입학 판정한다. 통과하고 exact 요청을 승인한 경우에만 MCP explore가 primary route다. catalog 부재나 usable response 전 MCP `timeout`, `deny`, `transport_error`에서는 같은 frozen packet으로 승인된 read-only CLI에 정확히 한 번 failover한다.
+- scope·freshness admission 실패 시 graph call을 열지 않고 `rg` 또는 `sg`로 돌아간다.
+- 한국어 원문은 `original_ko`로 보존한다. direct source에서 English term과 symbol/file anchor를 확인하고 byte·count cap을 검사한 뒤 첫 query 전에 packet을 freeze한다. graph 결과로 packet을 정제하지 않으며 query→MCP→CLI failover까지 같은 packet을 사용한다.
+- required field/type 누락이나 malformed 입력은 `unsupported`, byte·count cap 초과 입력은 `ambiguous`로 폐기하며 frozen query는 최대 1회다. `query_en`은 ASCII 120바이트, symbol은 각각 160바이트, path는 각각 240바이트다. MCP/CLI usable response가 schema-invalid·`malformed`이면 폐기 후 `unsupported`, raw response가 65536바이트를 넘으면 폐기 후 `ambiguous`로 중단한다. usable response 이후 실패에는 failover·retry·merge를 허용하지 않는다. permission glob은 각 command의 shape와 numeric flag만 제한하고 response byte, shell command 조합, per-turn·per-mission call count를 강제하지 않으므로 call·file·numeric cap과 별도 consumption cap을 behavioral budget으로 적용한다.
+- `fd`는 file set, `rg`는 lexical `path:line`, `sg`는 AST shape, CodeGraph는 cross-file relation candidate, runtime은 observable behavior를 소유한다. 서로 다른 failure mode를 교차 검증할 때만 도구를 추가하며 모든 도구를 의례적으로 순회하지 않는다.
+- lead는 graph candidate의 현재 source `path:line`을 직접 다시 확인한 뒤에만 직렬 병합한다. F3와 F4는 새 graph discovery·query·focused operation을 모두 금지하고 검증된 원장만 소비한다.
+- 상세 예산, 허용 명령, 교차 검증과 문제 해결은 [CodeGraph 하이브리드 분석 가이드](codegraph-analysis-guide.md)를 따른다.
 
 ## 위임과 쓰기 경계
 
@@ -71,4 +83,4 @@ legacy `/sensai/design`은 target exact-set에 없다.
 
 ## CLI와 permission
 
-허용 후보는 `fd`, `rg`, `ast-grep`, `jq`, Mike Farah `yq`, yshavit `mdq`, `mmdc`다. rewrite, exec, pipe, redirect, shell substitution, secret 경로, 외부 쓰기는 금지한다. permission은 OS sandbox가 아니므로 deterministic adversarial test와 disposable environment가 별도로 필요하다.
+허용 후보는 `fd`, `rg`, `sg`(ast-grep), `jq`, Mike Farah `yq`, yshavit `mdq`, `mmdc`와 exact argv가 승인된 persistent read-only CodeGraph CLI다. MCP는 unknown `codegraph_*` deny와 exact `codegraph_explore` ask를 적용한다. lead/skill은 rewrite, exec, pipe, redirect, shell substitution, secret 경로, 외부 쓰기와 CodeGraph index/server mutation을 운영상 금지한다. 기존 permission의 command shape·numeric flag·secret·redirect 방어는 유지하지만, OpenCode `1.18.3`이 shell AST의 각 command를 독립 평가하므로 glob은 개별 허용 command의 `|`, `;`, `&&`, `||`, `&` 조합이나 per-turn·per-mission call count를 기계적으로 막지 못한다. 따라서 각 명령 별도 실행, pipe 금지, query 최대 1회는 behavioral budget이지 security boundary가 아니다. 기계적 강제가 필요하면 CodeGraph bash pattern을 `ask`/`deny`로 바꾸거나 외부 sandbox/wrapper를 사용해야 하며 현재 package는 이를 설치하지 않는다. consumption cap, deterministic adversarial test와 disposable environment도 별도로 필요하다.
