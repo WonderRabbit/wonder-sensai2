@@ -401,19 +401,7 @@ catalog_check_output_config_contract() {
 }
 
 catalog_check_docs_parity() {
-  CATALOG_PRD_TOTAL=0
-  CATALOG_PRD_OK=1
-  for CATALOG_PRD in "$SOURCE_ROOT"/plan/prd/*.md; do
-    CATALOG_PRD_TOTAL=$((CATALOG_PRD_TOTAL + 1))
-    rg -q --no-config 'Runtime topology \(2026-07-19\).*`output/' "$CATALOG_PRD" || CATALOG_PRD_OK=0
-  done
-  assert_eq catalog.prd_topology_count 27 "$CATALOG_PRD_TOTAL" || true
-  if test "$CATALOG_PRD_OK" -eq 1; then
-    assert_record catalog.prd_topology_parity 0 'all 27 PRDs declare output runtime source' || true
-  else
-    assert_record catalog.prd_topology_parity 1 'one or more PRDs lack output topology contract' || true
-  fi
-  CATALOG_DOCS="$SOURCE_ROOT/README.md $SOURCE_ROOT/STATUS.md $SOURCE_ROOT/risk.md $SOURCE_ROOT/plan/todo_list.md $SOURCE_ROOT/docs/PROD.md $SOURCE_ROOT/docs/r4-mapping.md"
+  CATALOG_DOCS="$SOURCE_ROOT/README.md $SOURCE_ROOT/risk.md $SOURCE_ROOT/docs/PROD.md $SOURCE_ROOT/docs/r4-mapping.md"
   CATALOG_DOCS_OK=1
   for CATALOG_DOC in $CATALOG_DOCS "$SOURCE_ROOT"/docs/harness/*.md; do
     rg -q --no-config 'output/' "$CATALOG_DOC" || CATALOG_DOCS_OK=0
@@ -423,9 +411,9 @@ catalog_check_docs_parity() {
   else
     assert_record catalog.docs_topology_parity 1 'source-owned doc lacks output topology' || true
   fi
+  CATALOG_OBSOLETE_INPUTS="$SOURCE_ROOT/README.md $SOURCE_ROOT/risk.md $SOURCE_ROOT/docs"
   if rg -n --no-config '루트 payload|root payload|canonical 결정은 루트 단일 payload|저장소 루트의 `opencode\.json`' \
-    "$SOURCE_ROOT/README.md" "$SOURCE_ROOT/STATUS.md" "$SOURCE_ROOT/risk.md" \
-    "$SOURCE_ROOT/plan/todo_list.md" "$SOURCE_ROOT/docs" "$SOURCE_ROOT/plan/prd" >"$RUN_TMP/catalog-obsolete-topology.txt" 2>&1; then
+    $CATALOG_OBSOLETE_INPUTS >"$RUN_TMP/catalog-obsolete-topology.txt" 2>&1; then
     assert_record catalog.no_obsolete_root_payload_claim 1 'obsolete root runtime source claim found' || true
   else
     CATALOG_OBSOLETE_RC=$?
@@ -438,10 +426,8 @@ catalog_check_docs_parity() {
 
 catalog_clone_source() {
   CATALOG_CLONE=$1
-  mkdir -p "$CATALOG_CLONE/tests/contracts" "$CATALOG_CLONE/plan/prd" "$CATALOG_CLONE/docs/harness" "$CATALOG_CLONE/output" "$CATALOG_CLONE/bin" || return 70
-  cp "$SOURCE_ROOT/AGENTS.md" "$SOURCE_ROOT/README.md" "$SOURCE_ROOT/STATUS.md" "$SOURCE_ROOT/risk.md" "$CATALOG_CLONE/" || return 70
-  cp "$SOURCE_ROOT/plan/todo_list.md" "$CATALOG_CLONE/plan/todo_list.md" || return 70
-  cp "$SOURCE_ROOT"/plan/prd/*.md "$CATALOG_CLONE/plan/prd/" || return 70
+  mkdir -p "$CATALOG_CLONE/tests/contracts" "$CATALOG_CLONE/docs/harness" "$CATALOG_CLONE/output" "$CATALOG_CLONE/bin" || return 70
+  cp "$SOURCE_ROOT/AGENTS.md" "$SOURCE_ROOT/README.md" "$SOURCE_ROOT/risk.md" "$CATALOG_CLONE/" || return 70
   cp "$SOURCE_ROOT/docs/PROD.md" "$SOURCE_ROOT/docs/r4-mapping.md" "$CATALOG_CLONE/docs/" || return 70
   cp "$SOURCE_ROOT"/docs/harness/*.md "$CATALOG_CLONE/docs/harness/" || return 70
   cp "$SOURCE_ROOT"/tests/contracts/*.txt "$CATALOG_CLONE/tests/contracts/" || return 70

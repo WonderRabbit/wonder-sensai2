@@ -4,7 +4,7 @@
 
 현재 checkout은 **RUNTIME_CLI + GLOBAL_INSTALLER + HERMETIC_LOAD** 단계다. 공개 계약, fail-closed test runner, root fixture corpus, packaging source인 `output/`, 정확히 2 agent·9 command·15 skill, schema·recipe와 stdlib-only Go CLI source `cmd/sensai/`가 있다. `stage`의 36개 config payload, 기존 전역 OpenCode config에 합류하는 `install`, 외부 CLI, 격리한 macOS OpenCode `1.18.3` semantic load를 검증한다.
 
-제품 경계는 [제품 계약](docs/PROD.md), Go CLI와 Windows 전달 경계는 [Go CLI Windows PRD](docs/PRD-go-cli-windows.md), tracked binary의 rebuild·commit·push 계획은 [bin artifact 전달 PRD](docs/PRD-bin-artifact-delivery.md), task 배치는 [R4 mapping](docs/r4-mapping.md), 충돌 해소는 [contract freeze](docs/harness/contract-freeze.md), runtime·검증·release 상태는 [runtime](docs/harness/runtime-contract.md), [verification](docs/harness/verification-contract.md), [release](docs/harness/release-contract.md), [implementation status](docs/harness/implementation-status.md)가 소유한다. `.gitignore` 대상인 `plan/prd/`의 정확히 27개 문서는 planning input이며 runtime authority가 아니다.
+제품 경계는 [제품 계약](docs/PROD.md), CodeGraph 운용은 [CodeGraph 하이브리드 분석 가이드](docs/codegraph-analysis-guide.md), Go CLI와 Windows 전달 경계는 [Go CLI Windows PRD](docs/PRD-go-cli-windows.md), tracked binary의 rebuild·commit·push 계획은 [bin artifact 전달 PRD](docs/PRD-bin-artifact-delivery.md), task 배치는 [R4 mapping](docs/r4-mapping.md), 충돌 해소는 [contract freeze](docs/harness/contract-freeze.md), runtime·검증·release 상태는 [runtime](docs/harness/runtime-contract.md), [verification](docs/harness/verification-contract.md), [release](docs/harness/release-contract.md), [implementation status](docs/harness/implementation-status.md)가 소유한다. `.gitignore` 대상인 로컬 `plan/`과 `STATUS.md`는 planning/status input일 뿐 runtime authority나 committed verification gate가 아니다.
 
 ## 동결된 실행 경계
 
@@ -107,6 +107,16 @@ CONVENTION_CATEGORIES: NAMING, STRUCTURE, COMPONENT, API, STATE, ERROR, TEST
 
 `DATAFLOW`는 convention category가 아니라 AS-IS/TO-BE deliverable이며 provenance `dataflow` 모드로 검증한다.
 
+## CodeGraph 하이브리드 분석
+
+CodeGraph는 `fd`, `rg`, `sg`, direct source read와 runtime 검증을 대체하지 않는 optional extension candidate lane이다. 현재 `CODEGRAPH_ADMISSION=NOT_ADMITTED`이며 평가는 `REQUIRED_TO_EVALUATE`에서 시작한다. default·required path가 아니고 제품의 5개 확장 gate와 사람 승인을 모두 통과하기 전에는 입학을 주장하지 않는다. package는 MCP나 CodeGraph server/index를 설치·수정하지 않는다. 모든 unknown `codegraph_*` MCP 권한은 deny이고 exact `codegraph_explore`만 `ask`다. 사용자가 command 기반 MCP를 설정하고 CLI status admission 뒤 이 exact 요청을 승인하면 후보 평가에서 MCP explore를 우선한다. catalog 부재나 usable response 전 `timeout`, `deny`, `transport_error`에서는 같은 frozen packet으로 승인된 read-only CodeGraph CLI에 정확히 한 번 failover한다. persistent read-only permission은 capability projection일 뿐 admission이 아니다.
+
+모든 graph route는 대상 저장소의 canonical real path를 고정한 뒤 정확히 `codegraph status . --json`부터 실행한다. `initialized=true`, `projectPath` 일치, 세 `pendingChanges` 값이 정수 `0`, `worktreeMismatch=null`, `index.reindexRecommended=false`인 경우만 query를 허용한다. 실패하면 `out_of_scope`, `stale_graph`, `unsupported`로 중단하고 graph query를 실행하지 않은 채 repo-local `rg` 또는 `sg`로 돌아간다. 하네스는 index 생성·갱신·동기화를 자동 수행하지 않는다.
+
+한국어 원문은 `original_ko`로 보존하되 direct source에서 English term과 identifier/file anchor를 먼저 확인하고 byte·count cap을 검사한 뒤 graph query 전에 packet을 freeze한다. required field/type 누락이나 malformed 입력은 `unsupported`, cap 초과 입력은 `ambiguous`로 폐기한다. frozen query는 최대 1회이며 query, MCP, CLI는 끝까지 이 packet 하나만 사용하고 graph 결과로 query나 anchor를 정제하지 않는다. `query_en`은 ASCII 120바이트, symbol은 각각 160바이트, path는 각각 240바이트다. MCP나 CLI가 usable response를 냈지만 schema-invalid·`malformed`이거나 raw response가 65536바이트를 넘으면 전체를 폐기하고 각각 `unsupported` 또는 `ambiguous`로 중단한다. usable response 이후 실패에는 failover·retry·merge를 허용하지 않는다. 이 값은 call·file·numeric cap과 별도인 consumption cap이며 permission glob 자체가 response byte를 강제하지는 않는다. graph 결과는 candidate이며 lead가 현재 source의 `path:line`을 다시 확인해야 canonical evidence 후보가 된다. F3와 F4는 새 graph 탐색을 실행하지 않고 검증된 F1/F2 원장만 소비한다. 실제 명령, packet 예시, 도구별 장단점과 실패 대응은 [실전 가이드](docs/codegraph-analysis-guide.md)를 따른다.
+
+persistent read-only CodeGraph CLI allow는 유지하지만 security boundary로 과장하지 않는다. OpenCode `1.18.3`은 shell AST의 각 command를 독립적으로 permission 평가하므로 현재 glob은 각 command의 argv shape·numeric flag와 secret·redirect 방어를 투영할 뿐, 개별 허용 command를 `|`, `;`, `&&`, `||`, `&`로 조합하는 일이나 per-turn·per-mission call count를 기계적으로 막지 못한다. “각 명령을 별도로 실행”, “pipe 금지”, “query 최대 1회”는 lead/skill behavioral budget이다. 이를 machine-enforced boundary로 만들려면 CodeGraph bash pattern을 `ask`/`deny`로 바꾸거나 외부 sandbox/wrapper가 필요하지만 현재 package는 그런 도구를 설치하지 않는다. MCP의 unknown `codegraph_*` deny와 exact `codegraph_explore` ask 경계는 그대로다.
+
 ## PRD alias와 의존 순서
 
 bare T2와 R3 표기는 사용하지 않는다. canonical mapping은 다음과 같다.
@@ -162,8 +172,8 @@ macOS가 deterministic 구현과 QA의 현재 gate다. schema, jq recipe, fixtur
 - `self`: fail-closed runner, semantic failure, infrastructure failure, signal cleanup, unborn fingerprint를 확인한다.
 - `all`: `tests/contracts/release-preflight.json`의 결정적 selector 53개를 각각 정확히 한 번 실행하고 각 current-fingerprint receipt를 다시 검증한다. 모델·TUI·live delegation·Windows 상태는 pass 수와 분리한다.
 - `expect-fail misleading-success-output`: 출력에 `PASS`가 있어도 실제 exit와 assertion receipt가 실패이면 release preflight가 거부하는 경우만 인정한다.
-- `docs`: Markdown 링크, exact 27 PRD, alias/catalog/model/version/category/platform/status 계약과 대립 mutation을 확인한다.
-- `catalog-oracle`: `output/` 상대 literal 2 agents/9 commands/15 skills/2 schemas/5 recipes, 36-leaf config manifest와 별도 CLI, root/runtime 분리, 27 PRD topology parity를 확인한다.
+- `docs`: tracked source-owned `README.md`, `risk.md`, `docs/`의 regular-file·로컬 Markdown 링크, README command/skill catalog, source-owned agent mapping, model/version/category/platform 계약과 대립 mutation을 결정적으로 확인한다. ignored 로컬 `plan/`과 `STATUS.md`는 committed gate가 아니다.
+- `catalog-oracle`: `output/` 상대 literal 2 agents/9 commands/15 skills/2 schemas/5 recipes, 36-leaf config manifest와 별도 CLI, physical topology, root/runtime 분리, output 언어·config와 tracked source-owned docs의 output topology 언급을 확인한다. ignored 로컬 `plan/`과 `STATUS.md` parity는 검사하지 않는다.
 - `schema-trace`: trace 2.0 schema, 고정 golden, 상태·결합 관계와 단일 필드 mutation의 jq 동등성을 확인한다.
 - `expect-fail trace-dangling-id`: 격리한 유효 원장에 dangling evidence ID 하나를 주입하고 `trace.reference_integrity` 실패만 인정한다.
 - `recipe-trace`: trace의 전역 ID·직접 근거·exact join·mapping·binding, glossary 근거, 1.0→2.0 보존과 재실행 안정성을 확인한다.

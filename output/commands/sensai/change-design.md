@@ -30,6 +30,8 @@ OpenCode에 별도 `skill` 순서 필드가 있다고 가정하지 말고 아래
 
 앞 단계가 실패하면 뒤 단계를 진행하거나 부분 결과를 완료로 표시하지 마라.
 
+`F4`에서는 CodeGraph 후보를 재탐색하거나 새 그래프 호출을 실행하지 않는다. 승인된 AS-IS 원장만 소비하며 `binding`에 영향을 주는 `unsupported`, `unresolved`, `ambiguous`, `conflict` 또는 문서↔원문 불일치가 남으면 변경 설계를 중단한다.
+
 ## 위임과 단일 작성
 
 - 충돌과 `binding` 근거 조사는 `sensai-evidence-peer`에 `subtask: true`인 작은 읽기 전용 작업으로만 위임한다. 피어는 한 요구 또는 한 설계에 대한 `path:line`, `evidence_ids`, 원천 `ID`, 미확정 상태와 결정적 종료 코드만 반환하고 편집, 의미 판정, 재위임, 완료 선언을 하지 않는다.

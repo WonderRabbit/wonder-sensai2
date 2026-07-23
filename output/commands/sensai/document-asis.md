@@ -30,6 +30,8 @@ OpenCode에 별도 `skill` 순서 필드가 있다고 가정하지 말고 아래
 
 앞 산출 또는 검증이 실패하면 뒤 단계를 완료로 표시하지 말고 F3를 차단한다.
 
+`F3`에서는 CodeGraph 후보를 재탐색하거나 새 그래프 호출을 실행하지 않는다. 검증된 `F1`·`F2` 원장만 투영하며 `unresolved`, `ambiguous`, `conflict`가 대상 요소에 남아 있으면 문서화를 중단한다.
+
 ## 위임과 정규 작성
 
 - 원장 역대조와 누락 탐지는 `sensai-evidence-peer`에 `subtask: true`인 작은 작업으로만 위임한다. 한 작업은 산출 하나와 provenance 모드 하나만 다룬다.

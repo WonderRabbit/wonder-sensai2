@@ -28,7 +28,8 @@
 | Windows | 최종 사용자 receipt | 로컬 PASS 산술에 포함 |
 | CLI | stdlib-only Go module, exact build prerequisite Go `1.26.5` | POSIX shell runtime, third-party Go module |
 | build target | `darwin/arm64` `sensai`, `windows/amd64` `sensai.exe` | 다른 target 또는 suffix |
-| scope | Go CLI와 독립 검증 도구 기반 | Node/TS/plugin/MCP/custom tool/Yeoman |
+| scope | Go CLI와 독립 검증 도구 기반이며 package는 MCP, CodeGraph server/index를 설치·수정하지 않음 | 사용자가 별도로 구성한 MCP까지 blanket 배제하거나 package가 MCP/server/index를 소유 |
+| CodeGraph 확장 | optional candidate lane, 현재 `CODEGRAPH_ADMISSION=NOT_ADMITTED`, 평가 시작 상태 `REQUIRED_TO_EVALUATE` | default·required path 또는 입학 완료 기능 |
 
 ## source authority
 
@@ -39,6 +40,10 @@
 
 낮은 층의 성공 문장이나 오래된 상태는 높은 층의 현재 증거를 덮을 수 없다. 계약이 구현과 다르면 false-green이 아니라 구현 실패다.
 
+CodeGraph MCP 권한의 source authority는 unknown `codegraph_*` deny와 exact `codegraph_explore` ask다. package는 MCP/server/index를 설치하거나 수정하지 않는다. 사용자가 이미 구성한 exact `codegraph_explore`도 CLI `codegraph status . --json`의 scope·freshness admission과 해당 ask 승인을 모두 통과한 optional candidate evaluation에서만 호출할 수 있다. 이 route-level admission과 persistent read-only permission은 capability projection일 뿐 제품 확장 입학이 아니다. [제품 계약](../PROD.md)의 5개 확장 gate와 사람 승인을 모두 통과하기 전에는 CodeGraph를 default·required path 또는 admitted 기능으로 주장하지 않는다.
+
+persistent read-only CodeGraph CLI allow는 유지한다. OpenCode `1.18.3`의 shell AST permission은 각 command를 독립 평가하므로 command shape·numeric flag·secret·redirect 방어와 달리 `|`, `;`, `&&`, `||`, `&` command 조합과 per-turn·per-mission call count를 기계적으로 제한하지 않는다. 각 명령 별도 실행, pipe 금지, query 1회는 lead/skill behavioral budget이다. 기계적 강제는 CodeGraph bash pattern의 `ask`/`deny` 전환 또는 외부 sandbox/wrapper가 필요하며 package는 이를 설치하지 않는다.
+
 ## 보존 계약
 
 루트 `AGENTS.md`의 T01-T04 baseline SHA-256은 `64d0ffefedf2df07095a3316ebf48586366a4565cf1d3f8bed596e054c3c4866`이었다. 사용자가 T05에서 fixture 역할과 검증 절차 추가를 명시적으로 승인했으며 새 SHA는 `tests/contracts/root-agents.sha256.txt`가 보호한다. runtime `output/AGENTS.md`는 stage payload에 포함하되 implicit 자동 로드에 의존하지 않고 불변조건을 agent, command, skill, config에도 직접 둔다.
@@ -46,6 +51,7 @@
 ## 현재 비주장
 
 - live model, TUI, delegation 성공 주장 없음
+- CodeGraph 확장 입학 또는 default·required path 주장 없음
 - Windows 또는 cross-platform PASS 주장 없음
 - commit, tag, push, publish 없음
 
